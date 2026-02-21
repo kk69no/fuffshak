@@ -2,7 +2,7 @@
   "name": "FUFFSHAK — Учёт товаров",
   "short_name": "FUFFSHAK",
   "description": "Система учёта товаров и заказов",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0a0608",
   "theme_color": "#0a0608",
