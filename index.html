@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FUFFSHAK">
+<meta name="theme-color" content="#0a0608">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="FUFFSHAK">
+<title>FUFFSHAK — Учёт товаров</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0a0608;overflow:hidden}
+#root{width:100%;height:100%}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel" data-type="module">
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+// ─── UTILS ───
+function uid() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
+function fmt(n) { return new Intl.NumberFormat("ru-RU").format(n) + " ₽"; }
+function fmtD(d) { return d ? new Date(d).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) : "—"; }
+function fmtDT(d) { return d ? new Date(d).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
+function daysAgo(d) { if (!d) return 999; return Math.floor((Date.now() - new Date(d).getTime()) / 86400000); }
+
+const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "UN"];
+const CATS = ["Платья", "Юбки", "Брюки", "Топы", "Куртки", "Костюмы", "Худи", "Аксессуары"];
+const STATUSES = ["Новый", "Собирается", "Отправлен", "Доставлен", "Возврат", "Отменён"];
+const DELIVERY = ["СДЭК", "Почта", "Boxberry", "Самовывоз", "Курьер"];
+const ST_CLR = { "Новый": "#c2185b", "Собирается": "#e65100", "Отправлен": "#7b1fa2", "Доставлен": "#2e7d32", "Возврат": "#d84315", "Отменён": "#616161" };
+const NEXT_ST = { "Новый": "Собирается", "Собирается": "Отправлен", "Отправлен": "Доставлен" };
+const CITIES = ["Москва", "СПб", "Нальчик", "Краснодар", "Ростов", "Казань", "Махачкала", "Грозный"];
+
+function ld(k, fb) { try { const r = localStorage.getItem("ff4_" + k); return r ? JSON.parse(r) : fb; } catch { return fb; } }
+function sv(k, d) { try { localStorage.setItem("ff4_" + k, JSON.stringify(d)); } catch {} }
+function useP(k, init) { const [v, setV] = useState(() => ld(k, init)); useEffect(() => { sv(k, v); }, [k, v]); return [v, setV]; }
+function useToast() { const [t, setT] = useState([]); const add = useCallback((m, type = "ok") => { const i = uid(); setT(p => [...p, { id: i, m, type }]); setTimeout(() => setT(p => p.filter(x => x.id !== i)), 2500); }, []); return { toasts: t, toast: add }; }
+
+function deductStock(prods, items) { const p = prods.map(x => ({ ...x, sizes: { ...x.sizes } })); items.forEach(it => { const pr = p.find(x => x.id === it.productId); if (pr && pr.sizes[it.size] !== undefined) pr.sizes[it.size] = Math.max(0, pr.sizes[it.size] - (+it.qty || 1)); }); return p; }
+function restoreStock(prods, items) { const p = prods.map(x => ({ ...x, sizes: { ...x.sizes } })); items.forEach(it => { const pr = p.find(x => x.id === it.productId); if (pr && pr.sizes[it.size] !== undefined) pr.sizes[it.size] += +it.qty || 1; }); return p; }
+function checkStock(prods, items) { const w = []; items.forEach(it => { const pr = prods.find(x => x.id === it.productId); if (!pr) return; const a = pr.sizes[it.size]; if (a === undefined && it.size) w.push(`${pr.name}: нет размера ${it.size}`); else if (a !== undefined && a < (+it.qty || 1)) w.push(`${pr.name} (${it.size}): есть ${a}, нужно ${it.qty}`); }); return w; }
+function calcTotal(items, prods, disc = 0) { return items.reduce((s, it) => { const p = prods.find(x => x.id === it.productId); return s + (p ? p.sellPrice * (+it.qty || 1) : 0); }, 0) - (+disc || 0); }
+
+function getMsg(order, products, type) {
+  const items = order.items.map(it => { const p = products.find(x => x.id === it.productId); return p ? `${p.name} (${it.size})` : "?"; }).join(", ");
+  const t = {
+    shipped: `Здравствуйте, ${order.clientName}! ✨\nВаш заказ отправлен!\n📦 ${items}\n🚚 ${order.deliveryMethod}\n📍 Трек: ${order.trackNumber || "—"}\nСпасибо за покупку! 💕`,
+    ready: `${order.clientName}, ваш заказ собран и готов к отправке! 📦\n${items}\nСумма: ${fmt(order.total || 0)}`,
+    confirm: `${order.clientName}, подтверждаете заказ?\n${items}\n💰 ${fmt(order.total || 0)}\n🚚 ${order.deliveryMethod}, ${order.clientCity || ""}`,
+    delivered: `${order.clientName}, ваш заказ доставлен! 🎉\nНадеемся, вам понравится! Будем рады отзыву 💕`,
+  };
+  return t[type] || "";
+}
+function cp(text, toast) { navigator.clipboard.writeText(text).then(() => toast("📋 Скопировано")).catch(() => {}); }
+function exportCSV(orders, products) {
+  const rows = ["ID;Дата;Клиент;Телефон;Город;Товары;Сумма;Статус"];
+  orders.forEach(o => { const items = o.items.map(it => { const p = products.find(x => x.id === it.productId); return `${p ? p.name : "?"} ${it.size} x${it.qty}`; }).join(", ");
+    rows.push([o.id, fmtD(o.createdAt), o.clientName, o.clientPhone || "", o.clientCity || "", `"${items}"`, o.total || 0, o.status].join(";")); });
+  const b = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = `fuffshak_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+}
+
+// ═══ ICONS ═══
+const I = {
+  home: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"}),React.createElement("polyline",{points:"9 22 9 12 15 12 15 22"})),
+  tag: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"}),React.createElement("line",{x1:7,y1:7,x2:7.01,y2:7})),
+  box: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M21 10V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16v-2"}),React.createElement("polyline",{points:"3.27 6.96 12 12.01 20.73 6.96"}),React.createElement("line",{x1:12,y1:22.08,x2:12,y2:12})),
+  usr: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"}),React.createElement("circle",{cx:9,cy:7,r:4})),
+  dol: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("line",{x1:12,y1:1,x2:12,y2:23}),React.createElement("path",{d:"M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"})),
+  x: React.createElement("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("line",{x1:18,y1:6,x2:6,y2:18}),React.createElement("line",{x1:6,y1:6,x2:18,y2:18})),
+  plus: React.createElement("svg",{width:24,height:24,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("line",{x1:12,y1:5,x2:12,y2:19}),React.createElement("line",{x1:5,y1:12,x2:19,y2:12})),
+  ed: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"}),React.createElement("path",{d:"M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"})),
+  del: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("polyline",{points:"3 6 5 6 21 6"}),React.createElement("path",{d:"M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"})),
+  chk: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("polyline",{points:"20 6 9 17 4 12"})),
+  srch: React.createElement("svg",{width:18,height:18,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("circle",{cx:11,cy:11,r:8}),React.createElement("line",{x1:21,y1:21,x2:16.65,y2:16.65})),
+  warn: React.createElement("svg",{width:14,height:14,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"}),React.createElement("line",{x1:12,y1:9,x2:12,y2:13}),React.createElement("line",{x1:12,y1:17,x2:12.01,y2:17})),
+  copy: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("rect",{x:9,y:9,width:13,height:13,rx:2}),React.createElement("path",{d:"M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"})),
+  nxt: React.createElement("svg",{width:14,height:14,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("polyline",{points:"9 18 15 12 9 6"})),
+  dl: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"}),React.createElement("polyline",{points:"7 10 12 15 17 10"}),React.createElement("line",{x1:12,y1:15,x2:12,y2:3})),
+  fire: React.createElement("svg",{width:14,height:14,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M12 2c0 4-4 6-4 10a4 4 0 108 0c0-4-4-6-4-10z"})),
+  msg: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"})),
+  back: React.createElement("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("polyline",{points:"15 18 9 12 15 6"})),
+  minus: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("line",{x1:5,y1:12,x2:19,y2:12})),
+  pls: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("line",{x1:12,y1:5,x2:12,y2:19}),React.createElement("line",{x1:5,y1:12,x2:19,y2:12})),
+};
+
+// ═══ CSS ═══
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+:root{--bg:#0a0608;--cd:#130c10;--cd2:#1a1115;--inp:#1a1015;--bu:#8b1a3a;--bl:#b8274e;--bm:#5a1228;--ro:#e84880;--rs:rgba(232,72,128,0.1);--go:#c9a96e;--t1:#f2e8ec;--t2:#9a8890;--t3:#5e4f56;--bd:rgba(139,26,58,0.18);--bl2:rgba(255,255,255,0.05);--r:14px;--r2:10px;--tr:0.2s ease}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--t1);font-family:'DM Sans',sans-serif}
+.abg{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(139,26,58,0.06) 0%,transparent 60%),var(--bg)}
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:rgba(13,8,10,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--bd);display:flex;padding:5px 0 env(safe-area-inset-bottom,6px);justify-content:space-around}
+.bnav-i{display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 10px;color:var(--t3);font-size:9px;font-weight:500;cursor:pointer;transition:var(--tr);border:none;background:none;position:relative}
+.bnav-i.on{color:var(--ro)}
+.bnav-i.on::before{content:'';position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:18px;height:3px;background:var(--ro);border-radius:0 0 3px 3px}
+.bnav-i .bbg{position:absolute;top:0;right:6px;background:var(--bu);color:#fff;font-size:8px;font-weight:700;padding:0 4px;border-radius:6px;min-width:14px;text-align:center;line-height:14px}
+.main{padding:16px 14px 76px;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative;z-index:1}
+.pt{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:3px}
+.ps{font-size:11px;color:var(--t2);margin-bottom:14px}
+.hscroll{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none;scroll-snap-type:x mandatory;-ms-overflow-style:none}
+.hscroll::-webkit-scrollbar{display:none}
+.sc{min-width:130px;flex-shrink:0;background:var(--cd);border:1px solid var(--bd);border-radius:var(--r);padding:12px 14px;scroll-snap-align:start;position:relative;overflow:hidden}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--bu),var(--ro),transparent)}
+.scl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);font-weight:600;margin-bottom:3px}
+.scv{font-family:'Playfair Display',serif;font-size:20px;font-weight:700}
+.scs{font-size:9px;color:var(--t3);margin-top:1px}
+.gsrch{display:flex;align-items:center;gap:8px;background:var(--cd);border:1px solid var(--bd);border-radius:var(--r);padding:10px 14px;margin-bottom:12px}
+.gsrch input{background:none;border:none;outline:none;color:var(--t1);font-size:14px;font-family:'DM Sans',sans-serif;width:100%}
+.gsrch input::placeholder{color:var(--t3)}
+.card{background:var(--cd);border:1px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:10px;transition:var(--tr);position:relative;overflow:hidden}
+.card:active{transform:scale(0.98);background:var(--cd2)}
+.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.card-name{font-weight:600;font-size:14px;color:var(--t1)}
+.card-price{font-weight:700;color:var(--go);font-size:15px}
+.card-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+.st{display:inline-flex;align-items:center;gap:3px;padding:4px 12px;border-radius:18px;font-size:11px;font-weight:600;border:1px solid;cursor:pointer;transition:var(--tr);user-select:none;-webkit-user-select:none}
+.st:active{transform:scale(0.93)}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:600;background:var(--rs);color:var(--ro);border:1px solid rgba(232,72,128,0.15)}
+.sz-chip{display:inline-flex;align-items:center;border-radius:8px;overflow:hidden;border:1px solid var(--bd);margin:2px}
+.sz-btn{padding:8px 12px;background:rgba(139,26,58,0.12);color:var(--bl);border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;transition:var(--tr);user-select:none;-webkit-user-select:none}
+.sz-btn:active{background:var(--bu);color:#fff}
+.sz-label{padding:4px 6px;font-size:11px;font-weight:600;color:var(--t2);background:var(--inp);min-width:32px;text-align:center}
+.sz-label.out{opacity:0.35;text-decoration:line-through}
+.sz-qty{padding:4px 6px;font-size:12px;font-weight:700;color:var(--t1);background:var(--cd2);min-width:26px;text-align:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:10px 18px;border-radius:var(--r2);font-size:13px;font-weight:600;cursor:pointer;transition:var(--tr);border:1px solid transparent;font-family:'DM Sans',sans-serif;white-space:nowrap;user-select:none;-webkit-user-select:none}
+.btn:active{transform:scale(0.96)}
+.bp{background:linear-gradient(135deg,var(--bu),var(--bl));color:#fff;border-color:rgba(255,255,255,0.08);box-shadow:0 4px 14px rgba(139,26,58,0.3)}
+.bg2{background:rgba(139,26,58,0.12);color:var(--bl);border:1px solid rgba(139,26,58,0.25)}
+.bgh{background:transparent;color:var(--t2);border:1px solid var(--bl2)}
+.bsm{padding:7px 12px;font-size:11px}
+.bfull{width:100%}
+.fab{position:fixed;bottom:68px;right:14px;z-index:40;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--bu),var(--bl));color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 5px 20px rgba(139,26,58,0.4);transition:var(--tr)}
+.fab:active{transform:scale(0.88)}
+.fab-menu{position:fixed;bottom:130px;right:14px;z-index:40;display:flex;flex-direction:column;gap:8px;animation:su .2s}
+.fab-opt{display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--cd);border:1px solid var(--bd);border-radius:var(--r2);color:var(--t1);font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
+.fab-opt:active{background:var(--cd2)}
+.fab-over{position:fixed;inset:0;z-index:35;background:rgba(0,0,0,0.5)}
+.mo{position:fixed;inset:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;animation:su .2s}
+@keyframes su{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.mo-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:var(--bg);z-index:5}
+.mo-t{font-family:'Playfair Display',serif;font-size:17px;font-weight:600;flex:1}
+.mo-b{padding:14px}
+.mo-f{padding:10px 14px 20px;position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--bd);display:flex;gap:8px}
+.fg{margin-bottom:12px}
+.fl{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:4px;font-weight:600}
+.fi{width:100%;background:var(--inp);border:1px solid var(--bd);border-radius:var(--r2);padding:12px 14px;color:var(--t1);font-size:15px;font-family:'DM Sans',sans-serif;outline:none;transition:var(--tr);-webkit-appearance:none}
+.fi:focus{border-color:var(--bu);box-shadow:0 0 0 3px rgba(139,26,58,0.12)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qsz{display:flex;gap:5px;flex-wrap:wrap}
+.qsc{padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--inp);color:var(--t2);font-size:13px;font-weight:600;cursor:pointer;transition:var(--tr);user-select:none;-webkit-user-select:none}
+.qsc.on{background:var(--bu);border-color:var(--bl);color:#fff}
+.qsc:active:not(.on){background:var(--cd2)}
+.cchips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.cc{padding:6px 14px;border-radius:18px;border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px;cursor:pointer;transition:var(--tr);user-select:none;-webkit-user-select:none}
+.cc:active,.cc.on{background:var(--bu);border-color:var(--bu);color:#fff}
+.msg-tpl{background:var(--cd2);border:1px solid var(--bd);border-radius:var(--r2);padding:10px 12px;font-size:12px;color:var(--t2);white-space:pre-wrap;line-height:1.5;margin-top:6px;position:relative}
+.msg-copy{position:absolute;top:6px;right:6px;padding:6px 12px;border-radius:6px;background:var(--bu);color:#fff;border:none;font-size:11px;font-weight:600;cursor:pointer}
+.tl{border-left:2px solid var(--bd);margin:6px 0 6px 8px;padding-left:12px}
+.tle{padding:3px 0;font-size:11px;color:var(--t2);display:flex;align-items:center;gap:5px;position:relative}
+.tle::before{content:'';position:absolute;left:-17px;width:7px;height:7px;border-radius:50%;border:2px solid var(--bu);background:var(--bg)}
+.tc{position:fixed;bottom:68px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:4px;align-items:center;pointer-events:none}
+.to{background:var(--cd);border:1px solid var(--bu);border-radius:var(--r);padding:10px 20px;color:var(--t1);font-size:13px;box-shadow:0 8px 28px rgba(0,0,0,0.5);animation:tb .25s;white-space:nowrap}
+.to.err{border-color:#ef5350;color:#ef5350}
+@keyframes tb{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.wbox{background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:var(--r2);padding:10px 12px;margin-bottom:10px;font-size:12px;color:#ef5350;display:flex;align-items:center;gap:5px}
+.urgent-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#c2185b;margin-left:4px;animation:pu 1s infinite}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:0.4}}
+.stale-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#ef5350,transparent)}
+.divider{border-top:1px solid var(--bd);margin:10px 0}
+.empty{text-align:center;padding:40px 14px;color:var(--t3);font-size:13px}
+.csug{position:absolute;top:100%;left:0;right:0;background:var(--cd);border:1px solid var(--bd);border-radius:0 0 var(--r2) var(--r2);z-index:20;overflow:hidden}
+.csug-i{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bl2);font-size:13px}
+.csug-i:active{background:var(--cd2)}
+`;
+
+// ═══ COMPONENTS ═══
+function SizeChips({ sizes, onChange }) {
+  return React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 } },
+    Object.entries(sizes).map(([s, q]) =>
+      React.createElement("div", { key: s, className: "sz-chip" },
+        React.createElement("button", { className: "sz-btn", onClick: () => onChange(s, Math.max(0, q - 1)) }, I.minus),
+        React.createElement("div", { className: `sz-label ${q === 0 ? "out" : ""}` }, s),
+        React.createElement("div", { className: "sz-qty" }, q),
+        React.createElement("button", { className: "sz-btn", onClick: () => onChange(s, q + 1) }, I.pls)
+      )
+    )
+  );
+}
+
+function StatusBadge({ status, onClick }) {
+  const c = ST_CLR[status] || "var(--t3)";
+  return React.createElement("span", { className: "st", style: { color: c, borderColor: c + "40", background: c + "12" }, onClick }, status, NEXT_ST[status] && React.createElement("span", { style: { marginLeft: 2 } }, I.nxt));
+}
+
+// ═══ ADD PRODUCT ═══
+function AddProductModal({ onSave, onClose }) {
+  const [n, setN] = useState(""); const [p, setP] = useState(""); const [c, setC] = useState(""); const [cat, setCat] = useState(CATS[0]);
+  const [sz, setSz] = useState({ S: 1, M: 1, L: 1 });
+  const toggle = s => setSz(v => { const x = { ...v }; if (x[s] !== undefined) delete x[s]; else x[s] = 1; return x; });
+  const save = () => { if (!n || !p) return; onSave({ id: uid(), name: n, sellPrice: +p, costPrice: +(c || 0), category: cat, sizes: { ...sz }, sku: "", minStock: 2, description: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); };
+  return React.createElement("div", { className: "mo" },
+    React.createElement("div", { className: "mo-h" }, React.createElement("button", { className: "bgh btn bsm", onClick: onClose }, I.back), React.createElement("div", { className: "mo-t" }, "Новый товар")),
+    React.createElement("div", { className: "mo-b" },
+      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Название"), React.createElement("input", { className: "fi", value: n, onChange: e => setN(e.target.value), placeholder: "Платье макси", autoFocus: true })),
+      React.createElement("div", { className: "fr" },
+        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Цена"), React.createElement("input", { className: "fi", type: "number", value: p, onChange: e => setP(e.target.value), placeholder: "0" })),
+        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Себестоимость"), React.createElement("input", { className: "fi", type: "number", value: c, onChange: e => setC(e.target.value), placeholder: "0" }))),
+      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Категория"), React.createElement("div", { className: "qsz" }, CATS.map(x => React.createElement("div", { key: x, className: `qsc ${cat === x ? "on" : ""}`, onClick: () => setCat(x) }, x)))),
+      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Размеры"), React.createElement("div", { className: "qsz" }, SIZES.map(s => React.createElement("div", { key: s, className: `qsc ${sz[s] !== undefined ? "on" : ""}`, onClick: () => toggle(s) }, s))))
+    ),
+    React.createElement("div", { className: "mo-f" }, React.createElement("button", { className: "btn bp bfull", onClick: save }, I.chk, " Добавить товар"))
+  );
+}
+
+// ═══ ADD ORDER ═══
+function AddOrderModal({ products, clients, onSave, onClose, toast }) {
+  const [nm, setNm] = useState(""); const [ph, setPh] = useState(""); const [city, setCity] = useState(""); const [del, setDel] = useState("СДЭК");
+  const [items, setItems] = useState([{ productId: "", size: "", qty: 1 }]); const [urgent, setUrgent] = useState(false);
+  const [sug, setSug] = useState([]);
+  useEffect(() => { if (nm.length < 2) { setSug([]); return; } setSug(clients.filter(c => c.name.toLowerCase().includes(nm.toLowerCase())).slice(0, 3)); }, [nm, clients]);
+  const pickC = cl => { setNm(cl.name); setPh(cl.phone || ""); setCity(cl.city || ""); setSug([]); };
+  const setI = (i, k, v) => { const it = [...items]; it[i] = { ...it[i], [k]: v }; if (k === "productId") it[i].size = ""; setItems(it); };
+  const total = calcTotal(items, products);
+  const warns = useMemo(() => checkStock(products, items.filter(it => it.productId && it.size)), [products, items]);
+  const save = () => {
+    if (!nm || !items[0].productId) return;
+    if (warns.length > 0) { toast("⛔ " + warns[0], "err"); return; }
+    const fi = items.map(it => { if (it.productId && !it.size) { const pr = products.find(x => x.id === it.productId); if (pr) { const a = Object.entries(pr.sizes).find(([, q]) => q > 0); if (a) return { ...it, size: a[0] }; } } return it; }).filter(it => it.productId);
+    onSave({ id: uid(), clientName: nm, clientPhone: ph, clientCity: city, clientAddress: "", deliveryMethod: del, trackNumber: "", status: "Новый", urgent, items: fi, discount: 0, notes: "", prepaid: false, total, history: [{ status: "Новый", date: new Date().toISOString() }], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  };
+  return React.createElement("div", { className: "mo" },
+    React.createElement("div", { className: "mo-h" }, React.createElement("button", { className: "bgh btn bsm", onClick: onClose }, I.back), React.createElement("div", { className: "mo-t" }, "Новый заказ"), total > 0 && React.createElement("span", { style: { fontWeight: 700, color: "var(--go)", fontSize: 16 } }, fmt(total))),
+    React.createElement("div", { className: "mo-b" },
+      React.createElement("div", { className: "fg", style: { position: "relative" } }, React.createElement("label", { className: "fl" }, "Клиент"), React.createElement("input", { className: "fi", value: nm, onChange: e => setNm(e.target.value), placeholder: "Имя" }),
+        sug.length > 0 && React.createElement("div", { className: "csug" }, sug.map(c => React.createElement("div", { key: c.id, className: "csug-i", onClick: () => pickC(c) }, React.createElement("b", null, c.name), " ", React.createElement("span", { style: { color: "var(--t3)" } }, c.phone, " · ", c.city))))),
+      React.createElement("div", { className: "fr" },
+        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Телефон"), React.createElement("input", { className: "fi", value: ph, onChange: e => setPh(e.target.value), placeholder: "+7..." })),
+        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Доставка"), React.createElement("select", { className: "fi", value: del, onChange: e => setDel(e.target.value) }, DELIVERY.map(d => React.createElement("option", { key: d }, d))))),
+      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Город"), React.createElement("div", { className: "cchips" }, CITIES.map(c => React.createElement("div", { key: c, className: `cc ${city === c ? "on" : ""}`, onClick: () => setCity(city === c ? "" : c) }, c)))),
+      React.createElement("div", { className: "divider" }),
+      React.createElement("label", { className: "fl" }, "Товары"),
+      items.map((it, i) => { const pr = products.find(x => x.id === it.productId); return React.createElement("div", { key: i, style: { marginBottom: 10 } },
+        React.createElement("select", { className: "fi", value: it.productId, onChange: e => setI(i, "productId", e.target.value), style: { marginBottom: 6 } }, React.createElement("option", { value: "" }, "— Товар —"), products.map(p => { const tot = Object.values(p.sizes).reduce((a, b) => a + b, 0); return React.createElement("option", { key: p.id, value: p.id, disabled: tot === 0 }, p.name, " · ", fmt(p.sellPrice), tot === 0 ? " (нет)" : ""); })),
+        pr && React.createElement("div", { className: "qsz" }, Object.entries(pr.sizes).map(([s, q]) => React.createElement("div", { key: s, className: `qsc ${it.size === s ? "on" : ""}`, onClick: () => q > 0 && setI(i, "size", s), style: q <= 0 ? { opacity: 0.3, textDecoration: "line-through" } : {} }, s, " ", React.createElement("span", { style: { fontSize: 10, opacity: 0.6 } }, "(", q, ")")))),
+        items.length > 1 && React.createElement("button", { className: "btn bgh bsm", onClick: () => setItems(p => p.filter((_, j) => j !== i)), style: { marginTop: 6, color: "#ef5350" } }, I.del, " Убрать")); }),
+      React.createElement("button", { className: "btn bg2 bsm", onClick: () => setItems(p => [...p, { productId: "", size: "", qty: 1 }]) }, I.pls, " Ещё товар"),
+      warns.length > 0 && React.createElement("div", { className: "wbox" }, I.warn, " ", warns[0]),
+      React.createElement("div", { className: "divider" }),
+      React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: urgent ? "#c2185b" : "var(--t2)", padding: "6px 0" } }, React.createElement("input", { type: "checkbox", checked: urgent, onChange: e => setUrgent(e.target.checked), style: { accentColor: "#c2185b", width: 18, height: 18 } }), I.fire, " Срочный заказ")
+    ),
+    React.createElement("div", { className: "mo-f" }, React.createElement("button", { className: "btn bp bfull", onClick: save }, I.chk, " Создать заказ"))
+  );
+}
+
+// ═══ VIEW ORDER ═══
+function ViewOrderModal({ order, products, onSave, onClose, toast }) {
+  const [f, setF] = useState({ ...order, items: order.items.map(x => ({ ...x })) });
+  const [editing, setEditing] = useState(false);
+  const [msgType, setMsgType] = useState(null);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const total = calcTotal(f.items, products, f.discount);
+  const history = f.history || [];
+  const msg = msgType ? getMsg({ ...f, total }, products, msgType) : "";
+  const save = () => { onSave({ ...f, total, discount: +f.discount || 0, updatedAt: new Date().toISOString() }); };
+
+  return React.createElement("div", { className: "mo" },
+    React.createElement("div", { className: "mo-h" }, React.createElement("button", { className: "bgh btn bsm", onClick: onClose }, I.back), React.createElement("div", { className: "mo-t" }, "Заказ"),
+      React.createElement(StatusBadge, { status: f.status, onClick: () => { const ns = NEXT_ST[f.status]; if (ns) { setF(p => ({ ...p, status: ns, history: [...(p.history || []), { status: ns, date: new Date().toISOString() }] })); } } })),
+    React.createElement("div", { className: "mo-b" },
+      !editing ? React.createElement(React.Fragment, null,
+        React.createElement("div", { style: { fontSize: 18, fontWeight: 600, marginBottom: 3 } }, f.clientName, f.urgent && React.createElement("span", { className: "urgent-dot" })),
+        React.createElement("div", { style: { fontSize: 13, color: "var(--t2)", marginBottom: 2 } }, f.clientPhone || "—"),
+        React.createElement("div", { style: { fontSize: 13, color: "var(--t2)", marginBottom: 10 } }, "📍 ", f.clientCity || "—", " · ", f.deliveryMethod),
+        f.trackNumber && React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10, background: "var(--cd2)", padding: "8px 12px", borderRadius: "var(--r2)" } },
+          React.createElement("span", { style: { fontSize: 12, color: "var(--t3)" } }, "Трек:"),
+          React.createElement("span", { style: { fontFamily: "monospace", fontSize: 14, color: "var(--t1)" } }, f.trackNumber),
+          React.createElement("button", { className: "btn bg2 bsm", onClick: () => cp(f.trackNumber, toast) }, I.copy)),
+        React.createElement("div", { className: "divider" }),
+        f.items.map((it, i) => { const p = products.find(x => x.id === it.productId); return React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", padding: "5px 0" } },
+          React.createElement("div", null, React.createElement("span", { style: { fontWeight: 500, color: "var(--t1)" } }, p ? p.name : "?"), React.createElement("span", { className: "tag", style: { marginLeft: 6 } }, it.size), " ×", it.qty),
+          React.createElement("span", { className: "tp" }, p ? fmt(p.sellPrice * (+it.qty || 1)) : "")); }),
+        React.createElement("div", { className: "divider" }),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          React.createElement("span", { style: { fontSize: 12, color: "var(--t2)" } }, f.discount ? `Скидка: ${fmt(f.discount)} ` : "", f.prepaid ? "✓ Оплачен" : ""),
+          React.createElement("span", { style: { fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 700, color: "var(--go)" } }, fmt(total))),
+        f.notes && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "var(--t2)", background: "var(--cd2)", padding: "8px 12px", borderRadius: "var(--r2)" } }, "💬 ", f.notes),
+        React.createElement("div", { className: "divider" }),
+        React.createElement("label", { className: "fl" }, "Сообщение клиенту"),
+        React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 5 } },
+          [["confirm", "Подтверждение"], ["ready", "Собран"], ["shipped", "Отправлен"], ["delivered", "Доставлен"]].map(([k, l]) => React.createElement("button", { key: k, className: `btn ${msgType === k ? "bp" : "bg2"} bsm`, onClick: () => setMsgType(msgType === k ? null : k) }, I.msg, " ", l))),
+        msg && React.createElement("div", { className: "msg-tpl" }, msg, React.createElement("button", { className: "msg-copy", onClick: () => cp(msg, toast) }, "Копировать")),
+        history.length > 0 && React.createElement(React.Fragment, null, React.createElement("div", { className: "divider" }), React.createElement("label", { className: "fl" }, "История"),
+          React.createElement("div", { className: "tl" }, history.map((h, i) => React.createElement("div", { key: i, className: "tle" }, React.createElement("span", { style: { color: ST_CLR[h.status], fontWeight: 600 } }, h.status), React.createElement("span", { style: { color: "var(--t3)" } }, fmtDT(h.date))))))
+      ) : React.createElement(React.Fragment, null,
+        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Имя"), React.createElement("input", { className: "fi", value: f.clientName, onChange: e => set("clientName", e.target.value) })),
+        React.createElement("div", { className: "fr" },
+          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Телефон"), React.createElement("input", { className: "fi", value: f.clientPhone || "", onChange: e => set("clientPhone", e.target.value) })),
+          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Город"), React.createElement("input", { className: "fi", value: f.clientCity || "", onChange: e => set("clientCity", e.target.value) }))),
+        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Адрес"), React.createElement("input", { className: "fi", value: f.clientAddress || "", onChange: e => set("clientAddress", e.target.value) })),
+        React.createElement("div", { className: "fr" },
+          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Трек"), React.createElement("input", { className: "fi", value: f.trackNumber || "", onChange: e => set("trackNumber", e.target.value) })),
+          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Доставка"), React.createElement("select", { className: "fi", value: f.deliveryMethod, onChange: e => set("deliveryMethod", e.target.value) }, DELIVERY.map(d => React.createElement("option", { key: d }, d))))),
+        React.createElement("div", { className: "fr" },
+          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Скидка"), React.createElement("input", { className: "fi", type: "number", value: f.discount || 0, onChange: e => set("discount", e.target.value) })),
+          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Статус"), React.createElement("select", { className: "fi", value: f.status, onChange: e => set("status", e.target.value) }, STATUSES.map(s => React.createElement("option", { key: s }, s))))),
+        React.createElement("div", { style: { display: "flex", gap: 12, padding: "6px 0" } },
+          React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--t2)" } }, React.createElement("input", { type: "checkbox", checked: f.prepaid || false, onChange: e => set("prepaid", e.target.checked), style: { accentColor: "var(--bu)", width: 16, height: 16 } }), "Оплачен"),
+          React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: f.urgent ? "#c2185b" : "var(--t2)" } }, React.createElement("input", { type: "checkbox", checked: f.urgent || false, onChange: e => set("urgent", e.target.checked), style: { accentColor: "#c2185b", width: 16, height: 16 } }), I.fire, " Срочный")),
+        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Заметки"), React.createElement("textarea", { className: "fi", value: f.notes || "", onChange: e => set("notes", e.target.value), style: { resize: "vertical", minHeight: 50 } }))
+      )
+    ),
+    React.createElement("div", { className: "mo-f" },
+      !editing ? React.createElement(React.Fragment, null,
+        React.createElement("button", { className: "btn bg2 bfull", onClick: () => setEditing(true) }, I.ed, " Редактировать"),
+        React.createElement("button", { className: "btn bp bfull", onClick: save }, I.chk, " Сохранить")) :
+      React.createElement(React.Fragment, null,
+        React.createElement("button", { className: "btn bgh bfull", onClick: () => setEditing(false) }, "Назад"),
+        React.createElement("button", { className: "btn bp bfull", onClick: () => { save(); setEditing(false); } }, I.chk, " Сохранить")))
+  );
+}
+
+// ═══ PAGES ═══
+function HomePage({ products, orders }) {
+  const stock = products.reduce((s, p) => s + Object.values(p.sizes).reduce((a, b) => a + b, 0), 0);
+  const active = orders.filter(o => ["Новый", "Собирается", "Отправлен"].includes(o.status));
+  const done = orders.filter(o => o.status === "Доставлен");
+  const rev = done.reduce((s, o) => s + (o.total || 0), 0);
+  const cost = done.reduce((s, o) => s + o.items.reduce((is, it) => { const p = products.find(x => x.id === it.productId); return is + (p ? p.costPrice * (+it.qty || 1) : 0); }, 0), 0);
+  const profit = rev - cost;
+  const newO = orders.filter(o => o.status === "Новый").length;
+  const stale = orders.filter(o => o.status === "Новый" && daysAgo(o.createdAt) >= 2);
+  const low = products.filter(p => { const t = Object.values(p.sizes).reduce((a, b) => a + b, 0); return t > 0 && t <= p.minStock; });
+  const out = products.filter(p => Object.keys(p.sizes).length > 0 && Object.values(p.sizes).reduce((a, b) => a + b, 0) === 0);
+
+  return React.createElement("div", null,
+    React.createElement("div", { className: "pt" }, "FUFFSHAK"),
+    React.createElement("div", { className: "ps" }, new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })),
+    React.createElement("div", { className: "hscroll" },
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "На складе"), React.createElement("div", { className: "scv" }, stock), React.createElement("div", { className: "scs" }, products.length, " наим.")),
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Заказы"), React.createElement("div", { className: "scv" }, active.length), newO > 0 && React.createElement("div", { className: "scs", style: { color: "var(--ro)" } }, "🔴 ", newO, " новых")),
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Выручка"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, fmt(rev))),
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Прибыль"), React.createElement("div", { className: "scv", style: { fontSize: 17, color: profit >= 0 ? "#4caf50" : "#ef5350" } }, fmt(profit)), rev > 0 && React.createElement("div", { className: "scs" }, "Маржа ", Math.round(profit / rev * 100), "%")),
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Ср. чек"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, done.length ? fmt(Math.round(rev / done.length)) : "—"))),
+    stale.length > 0 && React.createElement("div", { className: "wbox" }, I.warn, " ", stale.length, " заказ(ов) ждут >2 дней"),
+    (low.length > 0 || out.length > 0) && React.createElement("div", { className: "card" },
+      out.map(p => React.createElement("div", { key: p.id, style: { fontSize: 12, padding: "2px 0" } }, React.createElement("span", { style: { color: "#ef5350", fontWeight: 600 } }, "⛔ "), p.name)),
+      low.map(p => React.createElement("div", { key: p.id, style: { fontSize: 12, padding: "2px 0" } }, React.createElement("span", { style: { color: "#ff9800", fontWeight: 600 } }, "⚠ "), p.name, " (", Object.values(p.sizes).reduce((a, b) => a + b, 0), ")"))),
+    active.length > 0 && React.createElement(React.Fragment, null,
+      React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 8, marginTop: 4 } }, "Активные заказы"),
+      active.slice(0, 6).map(o => React.createElement("div", { key: o.id, className: "card" },
+        React.createElement("div", { className: "card-h" }, React.createElement("div", null, React.createElement("span", { className: "card-name" }, o.clientName), o.urgent && React.createElement("span", { className: "urgent-dot" })), React.createElement(StatusBadge, { status: o.status, onClick: () => {} })),
+        React.createElement("div", { style: { fontSize: 12, color: "var(--t2)" } }, o.items.map((it, i) => { const p = products.find(x => x.id === it.productId); return React.createElement("span", { key: i }, p ? p.name : "?", i < o.items.length - 1 ? ", " : ""); })),
+        React.createElement("div", { className: "card-row" }, React.createElement("span", { style: { fontSize: 11, color: "var(--t3)" } }, o.clientCity, " · ", o.deliveryMethod), React.createElement("span", { className: "card-price" }, fmt(o.total || 0))))))
+  );
+}
+
+function ProductsPage({ products, setProducts, toast }) {
+  const [search, setSearch] = useState("");
+  const list = useMemo(() => { let l = [...products]; if (search) l = l.filter(p => p.name.toLowerCase().includes(search.toLowerCase())); return l; }, [products, search]);
+  const changeSz = (pid, sz, val) => { setProducts(prev => prev.map(p => p.id === pid ? { ...p, sizes: { ...p.sizes, [sz]: val }, updatedAt: new Date().toISOString() } : p)); };
+  const del = pid => { setProducts(prev => prev.filter(x => x.id !== pid)); toast("Удалён"); };
+  return React.createElement("div", null,
+    React.createElement("div", { className: "pt" }, "Товары"),
+    React.createElement("div", { className: "ps" }, products.length, " наименований"),
+    React.createElement("div", { className: "gsrch" }, I.srch, React.createElement("input", { placeholder: "Поиск...", value: search, onChange: e => setSearch(e.target.value) })),
+    list.length === 0 ? React.createElement("div", { className: "empty" }, "Нет товаров. Нажмите + чтобы добавить") :
+    list.map(p => { const tot = Object.values(p.sizes).reduce((a, b) => a + b, 0); const isLow = tot > 0 && tot <= p.minStock; const isOut = tot === 0 && Object.keys(p.sizes).length > 0;
+      return React.createElement("div", { key: p.id, className: "card" },
+        React.createElement("div", { className: "card-h" }, React.createElement("div", null, React.createElement("span", { className: "card-name" }, p.name), React.createElement("span", { className: "tag", style: { marginLeft: 6 } }, p.category)), React.createElement("span", { className: "card-price" }, fmt(p.sellPrice))),
+        isOut && React.createElement("div", { style: { fontSize: 11, color: "#ef5350", fontWeight: 600, marginBottom: 4 } }, "⛔ НЕТ В НАЛИЧИИ"),
+        isLow && React.createElement("div", { style: { fontSize: 11, color: "#ff9800", fontWeight: 600, marginBottom: 4 } }, "⚠ Мало — ", tot, " шт."),
+        React.createElement(SizeChips, { sizes: p.sizes, onChange: (sz, val) => changeSz(p.id, sz, val) }),
+        React.createElement("div", { className: "card-row" }, React.createElement("span", { style: { fontSize: 11, color: "var(--t3)" } }, "Себест. ", fmt(p.costPrice), " · Всего ", tot, " шт."),
+          React.createElement("button", { className: "btn bgh bsm", onClick: () => del(p.id), style: { color: "#ef5350" } }, I.del))); })
+  );
+}
+
+function OrdersPage({ orders, setOrders, products, setProducts, clients, toast }) {
+  const [search, setSearch] = useState(""); const [tab, setTab] = useState("active"); const [view, setView] = useState(null);
+  const list = useMemo(() => {
+    let l = [...orders];
+    if (tab === "active") l = l.filter(o => ["Новый", "Собирается", "Отправлен"].includes(o.status));
+    if (tab === "done") l = l.filter(o => o.status === "Доставлен");
+    if (tab === "other") l = l.filter(o => ["Возврат", "Отменён"].includes(o.status));
+    if (search) l = l.filter(o => o.clientName.toLowerCase().includes(search.toLowerCase()) || (o.trackNumber || "").includes(search) || (o.clientCity || "").toLowerCase().includes(search.toLowerCase()));
+    l.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return l;
+  }, [orders, search, tab]);
+  const nextSt = o => { const ns = NEXT_ST[o.status]; if (!ns) return; setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: ns, history: [...(x.history || []), { status: ns, date: new Date().toISOString() }], updatedAt: new Date().toISOString() } : x)); toast(`→ ${ns}`); };
+  const saveOrder = o => {
+    const old = orders.find(x => x.id === o.id);
+    if (old && old.status !== o.status) { o.history = [...(o.history || []), { status: o.status, date: new Date().toISOString() }]; if ((o.status === "Возврат" || o.status === "Отменён") && old.status !== "Возврат" && old.status !== "Отменён") { setProducts(prev => restoreStock(prev, o.items)); toast("↩ Остатки восстановлены"); } }
+    o.total = calcTotal(o.items, products, o.discount); setOrders(prev => prev.map(x => x.id === o.id ? o : x)); setView(null); toast("✅ Сохранено"); };
+  const del = oid => { const o = orders.find(x => x.id === oid); if (o && ["Новый", "Собирается"].includes(o.status)) { setProducts(prev => restoreStock(prev, o.items)); } setOrders(prev => prev.filter(x => x.id !== oid)); setView(null); toast("Удалён"); };
+
+  return React.createElement("div", null,
+    React.createElement("div", { className: "pt" }, "Заказы"),
+    React.createElement("div", { className: "ps" }, orders.length, " всего"),
+    React.createElement("div", { className: "gsrch" }, I.srch, React.createElement("input", { placeholder: "Имя, город, трек...", value: search, onChange: e => setSearch(e.target.value) })),
+    React.createElement("div", { style: { display: "flex", gap: 4, marginBottom: 12, overflowX: "auto" } },
+      [["active", "Активные"], ["all", "Все"], ["done", "Доставлены"], ["other", "Возврат"]].map(([k, l]) => React.createElement("div", { key: k, className: `qsc ${tab === k ? "on" : ""}`, onClick: () => setTab(k), style: { padding: "7px 12px", borderRadius: 8 } }, l))),
+    list.length === 0 ? React.createElement("div", { className: "empty" }, "Нет заказов") :
+    list.map(o => React.createElement("div", { key: o.id, className: "card", onClick: () => setView(o), style: { cursor: "pointer" } },
+      o.status === "Новый" && daysAgo(o.createdAt) >= 2 && React.createElement("div", { className: "stale-bar" }),
+      React.createElement("div", { className: "card-h" },
+        React.createElement("div", null, React.createElement("span", { className: "card-name" }, o.clientName), o.urgent && React.createElement("span", { className: "urgent-dot" }),
+          o.status === "Новый" && daysAgo(o.createdAt) >= 2 && React.createElement("span", { style: { fontSize: 9, color: "#ef5350", marginLeft: 4 } }, daysAgo(o.createdAt), "д")),
+        React.createElement(StatusBadge, { status: o.status, onClick: e => { e.stopPropagation(); nextSt(o); } })),
+      React.createElement("div", { style: { fontSize: 12, color: "var(--t2)" } }, o.items.map((it, i) => { const p = products.find(x => x.id === it.productId); return React.createElement("span", { key: i }, p ? p.name : "?", " (", it.size, ")", i < o.items.length - 1 ? ", " : ""); })),
+      React.createElement("div", { className: "card-row" }, React.createElement("span", { style: { fontSize: 11, color: "var(--t3)" } }, o.clientCity, " · ", o.deliveryMethod, o.prepaid ? " · ✓" : ""), React.createElement("span", { className: "card-price" }, fmt(o.total || 0))))),
+    view && React.createElement(ViewOrderModal, { order: view, products, onSave: saveOrder, onClose: () => setView(null), toast })
+  );
+}
+
+function ClientsPage({ orders }) {
+  const [search, setSearch] = useState("");
+  const map = {}; orders.forEach(o => { const k = o.clientName.toLowerCase().trim(); if (!map[k]) map[k] = { name: o.clientName, phone: "", city: "", orders: [], spent: 0 }; map[k].orders.push(o); if (o.status === "Доставлен") map[k].spent += o.total || 0; if (o.clientPhone && !map[k].phone) map[k].phone = o.clientPhone; if (o.clientCity && !map[k].city) map[k].city = o.clientCity; });
+  let list = Object.values(map).sort((a, b) => b.spent - a.spent);
+  if (search) list = list.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  return React.createElement("div", null,
+    React.createElement("div", { className: "pt" }, "Клиенты"),
+    React.createElement("div", { className: "ps" }, list.length, " уникальных"),
+    React.createElement("div", { className: "gsrch" }, I.srch, React.createElement("input", { placeholder: "Имя, телефон...", value: search, onChange: e => setSearch(e.target.value) })),
+    list.length === 0 ? React.createElement("div", { className: "empty" }, "Нет клиентов") :
+    list.map((c, i) => React.createElement("div", { key: i, className: "card" },
+      React.createElement("div", { className: "card-h" }, React.createElement("span", { className: "card-name" }, c.name), React.createElement("span", { className: "card-price" }, fmt(c.spent))),
+      React.createElement("div", { style: { fontSize: 12, color: "var(--t2)" } }, c.phone || "—", " · ", c.city || "—"),
+      React.createElement("div", { style: { fontSize: 11, color: "var(--t3)", marginTop: 3 } }, c.orders.length, " заказов · ", c.orders.filter(o => o.status === "Доставлен").length, " доставлено")))
+  );
+}
+
+function FinancePage({ orders, products, toast }) {
+  const done = orders.filter(o => o.status === "Доставлен");
+  const rev = done.reduce((s, o) => s + (o.total || 0), 0);
+  const cost = done.reduce((s, o) => s + o.items.reduce((is, it) => { const p = products.find(x => x.id === it.productId); return is + (p ? p.costPrice * (+it.qty || 1) : 0); }, 0), 0);
+  const profit = rev - cost;
+  const soldMap = {}; done.forEach(o => o.items.forEach(it => { if (!soldMap[it.productId]) soldMap[it.productId] = { qty: 0, rev: 0 }; const p = products.find(x => x.id === it.productId); soldMap[it.productId].qty += +it.qty || 1; soldMap[it.productId].rev += p ? p.sellPrice * (+it.qty || 1) : 0; }));
+  const top = Object.entries(soldMap).map(([pid, d]) => ({ p: products.find(x => x.id === pid), ...d })).filter(x => x.p).sort((a, b) => b.rev - a.rev).slice(0, 6);
+  return React.createElement("div", null,
+    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, React.createElement("div", { className: "pt" }, "Финансы"),
+      React.createElement("button", { className: "btn bg2 bsm", onClick: () => exportCSV(orders, products) }, I.dl, " CSV")),
+    React.createElement("div", { className: "ps" }, "Аналитика"),
+    React.createElement("div", { className: "hscroll" },
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Выручка"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, fmt(rev))),
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Себестоимость"), React.createElement("div", { className: "scv", style: { fontSize: 17, color: "#ef5350" } }, fmt(cost))),
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Прибыль"), React.createElement("div", { className: "scv", style: { fontSize: 17, color: profit >= 0 ? "#4caf50" : "#ef5350" } }, fmt(profit)), rev > 0 && React.createElement("div", { className: "scs" }, "Маржа ", Math.round(profit / rev * 100), "%")),
+      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Ср. чек"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, done.length ? fmt(Math.round(rev / done.length)) : "—"))),
+    top.length > 0 && React.createElement(React.Fragment, null,
+      React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 8 } }, "🏆 Топ товары"),
+      top.map((t, i) => React.createElement("div", { key: i, className: "card" },
+        React.createElement("div", { className: "card-h" }, React.createElement("span", { className: "card-name" }, t.p.name), React.createElement("span", { className: "card-price" }, fmt(t.rev))),
+        React.createElement("div", { style: { fontSize: 11, color: "var(--t3)" } }, "Продано ", t.qty, " шт."))))
+  );
+}
+
+// ═══ APP ═══
+function App() {
+  const [pg, setPg] = useState("home");
+  const [products, setProducts] = useP("products", []);
+  const [orders, setOrders] = useP("orders", []);
+  const { toasts, toast } = useToast();
+  const [fabOpen, setFabOpen] = useState(false);
+  const [modal, setModal] = useState(null);
+  const clients = useMemo(() => { const map = {}; orders.forEach(o => { const k = o.clientName.toLowerCase().trim(); if (!map[k]) map[k] = { id: k, name: o.clientName, phone: o.clientPhone || "", city: o.clientCity || "" }; if (o.clientPhone && !map[k].phone) map[k].phone = o.clientPhone; if (o.clientCity && !map[k].city) map[k].city = o.clientCity; }); return Object.values(map); }, [orders]);
+  const addProduct = p => { setProducts(prev => [...prev, p]); setModal(null); toast("✅ Товар добавлен"); };
+  const addOrder = o => { setProducts(prev => deductStock(prev, o.items)); setOrders(prev => [...prev, o]); setModal(null); toast("✅ Заказ создан"); };
+  const active = orders.filter(o => ["Новый", "Собирается", "Отправлен"].includes(o.status)).length;
+  const newN = orders.filter(o => o.status === "Новый").length;
+  const nav = [{ id: "home", l: "Главная", i: I.home }, { id: "products", l: "Товары", i: I.tag, b: products.length }, { id: "orders", l: "Заказы", i: I.box, b: active }, { id: "clients", l: "Клиенты", i: I.usr }, { id: "finance", l: "Финансы", i: I.dol }];
+
+  return React.createElement(React.Fragment, null,
+    React.createElement("style", null, css),
+    React.createElement("div", { className: "abg" }),
+    React.createElement("div", { className: "main" },
+      pg === "home" && React.createElement(HomePage, { products, orders }),
+      pg === "products" && React.createElement(ProductsPage, { products, setProducts, toast }),
+      pg === "orders" && React.createElement(OrdersPage, { orders, setOrders, products, setProducts, clients, toast }),
+      pg === "clients" && React.createElement(ClientsPage, { orders, products }),
+      pg === "finance" && React.createElement(FinancePage, { orders, products, toast })),
+    fabOpen && React.createElement("div", { className: "fab-over", onClick: () => setFabOpen(false) }),
+    fabOpen && React.createElement("div", { className: "fab-menu" },
+      React.createElement("div", { className: "fab-opt", onClick: () => { setFabOpen(false); setModal("product"); } }, I.tag, " Новый товар"),
+      React.createElement("div", { className: "fab-opt", onClick: () => { setFabOpen(false); setModal("order"); } }, I.box, " Новый заказ")),
+    React.createElement("button", { className: "fab", onClick: () => setFabOpen(!fabOpen), style: { transform: fabOpen ? "rotate(45deg)" : "none" } }, I.plus),
+    React.createElement("nav", { className: "bnav" },
+      nav.map(n => React.createElement("button", { key: n.id, className: `bnav-i ${pg === n.id ? "on" : ""}`, onClick: () => setPg(n.id) },
+        n.i, React.createElement("span", null, n.l),
+        n.id === "orders" && newN > 0 && React.createElement("span", { className: "bbg", style: { background: "#c2185b" } }, newN),
+        n.b > 0 && n.id !== "home" && n.id !== "orders" && React.createElement("span", { className: "bbg" }, n.b)))),
+    modal === "product" && React.createElement(AddProductModal, { onSave: addProduct, onClose: () => setModal(null) }),
+    modal === "order" && React.createElement(AddOrderModal, { products, clients, onSave: addOrder, onClose: () => setModal(null), toast }),
+    React.createElement("div", { className: "tc" }, toasts.map(t => React.createElement("div", { key: t.id, className: `to ${t.type === "err" ? "err" : ""}` }, t.m)))
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+<script>
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
