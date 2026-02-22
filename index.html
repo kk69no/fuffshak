@@ -2,519 +2,311 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FUFFSHAK">
-<meta name="theme-color" content="#0a0608">
+<meta name="theme-color" content="#08060a">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="application-name" content="FUFFSHAK">
-<title>FUFFSHAK — Учёт товаров</title>
+<title>FUFFSHAK</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{background:#0a0608;overflow:hidden}
-#root{width:100%;height:100%}
-</style>
+<style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{height:100%;overflow:hidden}body{background:#08060a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}#root{height:100%}</style>
 </head>
 <body>
 <div id="root"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
-<script type="text/babel" data-type="module">
-const { useState, useEffect, useCallback, useMemo, useRef } = React;
+<script type="text/babel">
+const{useState,useEffect,useCallback,useMemo,useRef}=React;
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).substr(2,5);
+const fmt=n=>new Intl.NumberFormat("ru-RU").format(n)+" ₽";
+const fmtD=d=>d?new Date(d).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"}):"—";
+const fmtDT=d=>d?new Date(d).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
+const daysAgo=d=>{if(!d)return 999;return Math.floor((Date.now()-new Date(d).getTime())/864e5)};
+const relTime=d=>{if(!d)return"—";const m=Math.floor((Date.now()-new Date(d).getTime())/6e4);if(m<1)return"сейчас";if(m<60)return m+"м";const h=Math.floor(m/60);if(h<24)return h+"ч";const dd=Math.floor(h/24);if(dd===1)return"вчера";if(dd<7)return dd+"д";return fmtD(d)};
+const SIZES=["XS","S","M","L","XL","XXL","UN"];
+const CATS=["Платья","Юбки","Брюки","Топы","Куртки","Костюмы","Худи","Аксессуары"];
+const CC={"Платья":"#e84880","Юбки":"#a855f7","Брюки":"#3b82f6","Топы":"#f59e0b","Куртки":"#10b981","Костюмы":"#ec4899","Худи":"#8b5cf6","Аксессуары":"#f97316"};
+const STATUSES=["Новый","Собирается","Отправлен","Доставлен","Возврат","Отменён"];
+const DELIVERY=["СДЭК","Почта","Boxberry","Самовывоз","Курьер"];
+const SC={"Новый":"#e84880","Собирается":"#f59e0b","Отправлен":"#a855f7","Доставлен":"#10b981","Возврат":"#ef4444","Отменён":"#6b7280"};
+const SB={"Новый":"rgba(232,72,128,.12)","Собирается":"rgba(245,158,11,.12)","Отправлен":"rgba(168,85,247,.12)","Доставлен":"rgba(16,185,129,.12)","Возврат":"rgba(239,68,68,.12)","Отменён":"rgba(107,114,128,.12)"};
+const NS={"Новый":"Собирается","Собирается":"Отправлен","Отправлен":"Доставлен"};
+const CITIES=["Москва","СПб","Нальчик","Краснодар","Ростов","Казань","Махачкала","Грозный"];
+const STEPS=["Новый","Собирается","Отправлен","Доставлен"];
+const ld=(k,fb)=>{try{return JSON.parse(localStorage.getItem("ff5_"+k))||fb}catch{return fb}};
+const sv=(k,d)=>{try{localStorage.setItem("ff5_"+k,JSON.stringify(d))}catch{}};
+const useP=(k,i)=>{const[v,s]=useState(()=>ld(k,i));useEffect(()=>{sv(k,v)},[k,v]);return[v,s]};
+const useToast=()=>{const[t,s]=useState([]);const a=useCallback((m,tp="ok")=>{const i=uid();s(p=>[...p,{id:i,m,type:tp}]);setTimeout(()=>s(p=>p.filter(x=>x.id!==i)),2200)},[]);return{toasts:t,toast:a}};
+const deductStock=(p,items)=>{const r=p.map(x=>({...x,sizes:{...x.sizes}}));items.forEach(it=>{const pr=r.find(x=>x.id===it.productId);if(pr&&pr.sizes[it.size]!==undefined)pr.sizes[it.size]=Math.max(0,pr.sizes[it.size]-(+it.qty||1))});return r};
+const restoreStock=(p,items)=>{const r=p.map(x=>({...x,sizes:{...x.sizes}}));items.forEach(it=>{const pr=r.find(x=>x.id===it.productId);if(pr&&pr.sizes[it.size]!==undefined)pr.sizes[it.size]+=+it.qty||1});return r};
+const checkStock=(p,items)=>{const w=[];items.forEach(it=>{const pr=p.find(x=>x.id===it.productId);if(!pr)return;const a=pr.sizes[it.size];if(a===undefined&&it.size)w.push(`${pr.name}: нет ${it.size}`);else if(a!==undefined&&a<(+it.qty||1))w.push(`${pr.name}(${it.size}): ${a}шт`)});return w};
+const calcTotal=(items,p,d=0)=>items.reduce((s,it)=>{const pr=p.find(x=>x.id===it.productId);return s+(pr?pr.sellPrice*(+it.qty||1):0)},0)-(+d||0);
+const getMsg=(o,p,t)=>{const it=o.items.map(i=>{const pr=p.find(x=>x.id===i.productId);return pr?`${pr.name} (${i.size})`:"?"}).join(", ");return{shipped:`Здравствуйте, ${o.clientName}! ✨\nВаш заказ отправлен!\n📦 ${it}\n🚚 ${o.deliveryMethod}\n📍 Трек: ${o.trackNumber||"—"}\nСпасибо! 💕`,ready:`${o.clientName}, заказ собран! 📦\n${it}\nСумма: ${fmt(o.total||0)}`,confirm:`${o.clientName}, подтверждаете?\n${it}\n💰 ${fmt(o.total||0)}\n🚚 ${o.deliveryMethod}, ${o.clientCity||""}`,delivered:`${o.clientName}, заказ доставлен! 🎉\nБудем рады отзыву 💕`}[t]||""};
+const cp=(t,toast)=>{navigator.clipboard.writeText(t).then(()=>toast("📋 Скопировано")).catch(()=>{})};
+const exportCSV=(orders,products)=>{const rows=["ID;Дата;Клиент;Телефон;Город;Товары;Сумма;Статус"];orders.forEach(o=>{const it=o.items.map(i=>{const p=products.find(x=>x.id===i.productId);return`${p?p.name:"?"} ${i.size}x${i.qty}`}).join(", ");rows.push([o.id,fmtD(o.createdAt),o.clientName,o.clientPhone||"",o.clientCity||"",`"${it}"`,o.total||0,o.status].join(";"))});const b=new Blob(["\uFEFF"+rows.join("\n")],{type:"text/csv;charset=utf-8"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`fuffshak_${new Date().toISOString().slice(0,10)}.csv`;a.click()};
 
-// ─── UTILS ───
-function uid() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
-function fmt(n) { return new Intl.NumberFormat("ru-RU").format(n) + " ₽"; }
-function fmtD(d) { return d ? new Date(d).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) : "—"; }
-function fmtDT(d) { return d ? new Date(d).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
-function daysAgo(d) { if (!d) return 999; return Math.floor((Date.now() - new Date(d).getTime()) / 86400000); }
-
-const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "UN"];
-const CATS = ["Платья", "Юбки", "Брюки", "Топы", "Куртки", "Костюмы", "Худи", "Аксессуары"];
-const STATUSES = ["Новый", "Собирается", "Отправлен", "Доставлен", "Возврат", "Отменён"];
-const DELIVERY = ["СДЭК", "Почта", "Boxberry", "Самовывоз", "Курьер"];
-const ST_CLR = { "Новый": "#c2185b", "Собирается": "#e65100", "Отправлен": "#7b1fa2", "Доставлен": "#2e7d32", "Возврат": "#d84315", "Отменён": "#616161" };
-const NEXT_ST = { "Новый": "Собирается", "Собирается": "Отправлен", "Отправлен": "Доставлен" };
-const CITIES = ["Москва", "СПб", "Нальчик", "Краснодар", "Ростов", "Казань", "Махачкала", "Грозный"];
-
-function ld(k, fb) { try { const r = localStorage.getItem("ff4_" + k); return r ? JSON.parse(r) : fb; } catch { return fb; } }
-function sv(k, d) { try { localStorage.setItem("ff4_" + k, JSON.stringify(d)); } catch {} }
-function useP(k, init) { const [v, setV] = useState(() => ld(k, init)); useEffect(() => { sv(k, v); }, [k, v]); return [v, setV]; }
-function useToast() { const [t, setT] = useState([]); const add = useCallback((m, type = "ok") => { const i = uid(); setT(p => [...p, { id: i, m, type }]); setTimeout(() => setT(p => p.filter(x => x.id !== i)), 2500); }, []); return { toasts: t, toast: add }; }
-
-function deductStock(prods, items) { const p = prods.map(x => ({ ...x, sizes: { ...x.sizes } })); items.forEach(it => { const pr = p.find(x => x.id === it.productId); if (pr && pr.sizes[it.size] !== undefined) pr.sizes[it.size] = Math.max(0, pr.sizes[it.size] - (+it.qty || 1)); }); return p; }
-function restoreStock(prods, items) { const p = prods.map(x => ({ ...x, sizes: { ...x.sizes } })); items.forEach(it => { const pr = p.find(x => x.id === it.productId); if (pr && pr.sizes[it.size] !== undefined) pr.sizes[it.size] += +it.qty || 1; }); return p; }
-function checkStock(prods, items) { const w = []; items.forEach(it => { const pr = prods.find(x => x.id === it.productId); if (!pr) return; const a = pr.sizes[it.size]; if (a === undefined && it.size) w.push(`${pr.name}: нет размера ${it.size}`); else if (a !== undefined && a < (+it.qty || 1)) w.push(`${pr.name} (${it.size}): есть ${a}, нужно ${it.qty}`); }); return w; }
-function calcTotal(items, prods, disc = 0) { return items.reduce((s, it) => { const p = prods.find(x => x.id === it.productId); return s + (p ? p.sellPrice * (+it.qty || 1) : 0); }, 0) - (+disc || 0); }
-
-function getMsg(order, products, type) {
-  const items = order.items.map(it => { const p = products.find(x => x.id === it.productId); return p ? `${p.name} (${it.size})` : "?"; }).join(", ");
-  const t = {
-    shipped: `Здравствуйте, ${order.clientName}! ✨\nВаш заказ отправлен!\n📦 ${items}\n🚚 ${order.deliveryMethod}\n📍 Трек: ${order.trackNumber || "—"}\nСпасибо за покупку! 💕`,
-    ready: `${order.clientName}, ваш заказ собран и готов к отправке! 📦\n${items}\nСумма: ${fmt(order.total || 0)}`,
-    confirm: `${order.clientName}, подтверждаете заказ?\n${items}\n💰 ${fmt(order.total || 0)}\n🚚 ${order.deliveryMethod}, ${order.clientCity || ""}`,
-    delivered: `${order.clientName}, ваш заказ доставлен! 🎉\nНадеемся, вам понравится! Будем рады отзыву 💕`,
-  };
-  return t[type] || "";
-}
-function cp(text, toast) { navigator.clipboard.writeText(text).then(() => toast("📋 Скопировано")).catch(() => {}); }
-function exportCSV(orders, products) {
-  const rows = ["ID;Дата;Клиент;Телефон;Город;Товары;Сумма;Статус"];
-  orders.forEach(o => { const items = o.items.map(it => { const p = products.find(x => x.id === it.productId); return `${p ? p.name : "?"} ${it.size} x${it.qty}`; }).join(", ");
-    rows.push([o.id, fmtD(o.createdAt), o.clientName, o.clientPhone || "", o.clientCity || "", `"${items}"`, o.total || 0, o.status].join(";")); });
-  const b = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = `fuffshak_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-}
-
-// ═══ ICONS ═══
-const I = {
-  home: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"}),React.createElement("polyline",{points:"9 22 9 12 15 12 15 22"})),
-  tag: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"}),React.createElement("line",{x1:7,y1:7,x2:7.01,y2:7})),
-  box: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M21 10V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16v-2"}),React.createElement("polyline",{points:"3.27 6.96 12 12.01 20.73 6.96"}),React.createElement("line",{x1:12,y1:22.08,x2:12,y2:12})),
-  usr: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"}),React.createElement("circle",{cx:9,cy:7,r:4})),
-  dol: React.createElement("svg",{width:22,height:22,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("line",{x1:12,y1:1,x2:12,y2:23}),React.createElement("path",{d:"M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"})),
-  x: React.createElement("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("line",{x1:18,y1:6,x2:6,y2:18}),React.createElement("line",{x1:6,y1:6,x2:18,y2:18})),
-  plus: React.createElement("svg",{width:24,height:24,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("line",{x1:12,y1:5,x2:12,y2:19}),React.createElement("line",{x1:5,y1:12,x2:19,y2:12})),
-  ed: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"}),React.createElement("path",{d:"M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"})),
-  del: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("polyline",{points:"3 6 5 6 21 6"}),React.createElement("path",{d:"M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"})),
-  chk: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("polyline",{points:"20 6 9 17 4 12"})),
-  srch: React.createElement("svg",{width:18,height:18,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("circle",{cx:11,cy:11,r:8}),React.createElement("line",{x1:21,y1:21,x2:16.65,y2:16.65})),
-  warn: React.createElement("svg",{width:14,height:14,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"}),React.createElement("line",{x1:12,y1:9,x2:12,y2:13}),React.createElement("line",{x1:12,y1:17,x2:12.01,y2:17})),
-  copy: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("rect",{x:9,y:9,width:13,height:13,rx:2}),React.createElement("path",{d:"M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"})),
-  nxt: React.createElement("svg",{width:14,height:14,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("polyline",{points:"9 18 15 12 9 6"})),
-  dl: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"}),React.createElement("polyline",{points:"7 10 12 15 17 10"}),React.createElement("line",{x1:12,y1:15,x2:12,y2:3})),
-  fire: React.createElement("svg",{width:14,height:14,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M12 2c0 4-4 6-4 10a4 4 0 108 0c0-4-4-6-4-10z"})),
-  msg: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("path",{d:"M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"})),
-  back: React.createElement("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2},React.createElement("polyline",{points:"15 18 9 12 15 6"})),
-  minus: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("line",{x1:5,y1:12,x2:19,y2:12})),
-  pls: React.createElement("svg",{width:16,height:16,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2.5},React.createElement("line",{x1:12,y1:5,x2:12,y2:19}),React.createElement("line",{x1:5,y1:12,x2:19,y2:12})),
-};
-
-// ═══ CSS ═══
-const css = `
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
-:root{--bg:#0a0608;--cd:#130c10;--cd2:#1a1115;--inp:#1a1015;--bu:#8b1a3a;--bl:#b8274e;--bm:#5a1228;--ro:#e84880;--rs:rgba(232,72,128,0.1);--go:#c9a96e;--t1:#f2e8ec;--t2:#9a8890;--t3:#5e4f56;--bd:rgba(139,26,58,0.18);--bl2:rgba(255,255,255,0.05);--r:14px;--r2:10px;--tr:0.2s ease}
+const css=`
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+:root{--bg:#08060a;--bg2:#0f0c12;--g:rgba(18,14,22,.72);--g2:rgba(24,18,30,.6);--b:rgba(255,255,255,.06);--b2:rgba(255,255,255,.1);--a:#e84880;--a2:#a855f7;--a3:#3b82f6;--gold:#f5c542;--t1:#f4f0f5;--t2:#8a8494;--t3:#4a4554;--r:16px;--r2:12px}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden}
-body{background:var(--bg);color:var(--t1);font-family:'DM Sans',sans-serif}
-.abg{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(139,26,58,0.06) 0%,transparent 60%),var(--bg)}
-.bnav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:rgba(13,8,10,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--bd);display:flex;padding:5px 0 env(safe-area-inset-bottom,6px);justify-content:space-around}
-.bnav-i{display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 10px;color:var(--t3);font-size:9px;font-weight:500;cursor:pointer;transition:var(--tr);border:none;background:none;position:relative}
-.bnav-i.on{color:var(--ro)}
-.bnav-i.on::before{content:'';position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:18px;height:3px;background:var(--ro);border-radius:0 0 3px 3px}
-.bnav-i .bbg{position:absolute;top:0;right:6px;background:var(--bu);color:#fff;font-size:8px;font-weight:700;padding:0 4px;border-radius:6px;min-width:14px;text-align:center;line-height:14px}
-.main{padding:16px 14px 76px;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative;z-index:1}
-.pt{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:3px}
-.ps{font-size:11px;color:var(--t2);margin-bottom:14px}
-.hscroll{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none;scroll-snap-type:x mandatory;-ms-overflow-style:none}
-.hscroll::-webkit-scrollbar{display:none}
-.sc{min-width:130px;flex-shrink:0;background:var(--cd);border:1px solid var(--bd);border-radius:var(--r);padding:12px 14px;scroll-snap-align:start;position:relative;overflow:hidden}
-.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--bu),var(--ro),transparent)}
-.scl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);font-weight:600;margin-bottom:3px}
-.scv{font-family:'Playfair Display',serif;font-size:20px;font-weight:700}
-.scs{font-size:9px;color:var(--t3);margin-top:1px}
-.gsrch{display:flex;align-items:center;gap:8px;background:var(--cd);border:1px solid var(--bd);border-radius:var(--r);padding:10px 14px;margin-bottom:12px}
-.gsrch input{background:none;border:none;outline:none;color:var(--t1);font-size:14px;font-family:'DM Sans',sans-serif;width:100%}
-.gsrch input::placeholder{color:var(--t3)}
-.card{background:var(--cd);border:1px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:10px;transition:var(--tr);position:relative;overflow:hidden}
-.card:active{transform:scale(0.98);background:var(--cd2)}
-.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-.card-name{font-weight:600;font-size:14px;color:var(--t1)}
-.card-price{font-weight:700;color:var(--go);font-size:15px}
-.card-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
-.st{display:inline-flex;align-items:center;gap:3px;padding:4px 12px;border-radius:18px;font-size:11px;font-weight:600;border:1px solid;cursor:pointer;transition:var(--tr);user-select:none;-webkit-user-select:none}
-.st:active{transform:scale(0.93)}
-.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:600;background:var(--rs);color:var(--ro);border:1px solid rgba(232,72,128,0.15)}
-.sz-chip{display:inline-flex;align-items:center;border-radius:8px;overflow:hidden;border:1px solid var(--bd);margin:2px}
-.sz-btn{padding:8px 12px;background:rgba(139,26,58,0.12);color:var(--bl);border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;transition:var(--tr);user-select:none;-webkit-user-select:none}
-.sz-btn:active{background:var(--bu);color:#fff}
-.sz-label{padding:4px 6px;font-size:11px;font-weight:600;color:var(--t2);background:var(--inp);min-width:32px;text-align:center}
-.sz-label.out{opacity:0.35;text-decoration:line-through}
-.sz-qty{padding:4px 6px;font-size:12px;font-weight:700;color:var(--t1);background:var(--cd2);min-width:26px;text-align:center}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:10px 18px;border-radius:var(--r2);font-size:13px;font-weight:600;cursor:pointer;transition:var(--tr);border:1px solid transparent;font-family:'DM Sans',sans-serif;white-space:nowrap;user-select:none;-webkit-user-select:none}
-.btn:active{transform:scale(0.96)}
-.bp{background:linear-gradient(135deg,var(--bu),var(--bl));color:#fff;border-color:rgba(255,255,255,0.08);box-shadow:0 4px 14px rgba(139,26,58,0.3)}
-.bg2{background:rgba(139,26,58,0.12);color:var(--bl);border:1px solid rgba(139,26,58,0.25)}
-.bgh{background:transparent;color:var(--t2);border:1px solid var(--bl2)}
-.bsm{padding:7px 12px;font-size:11px}
-.bfull{width:100%}
-.fab{position:fixed;bottom:68px;right:14px;z-index:40;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--bu),var(--bl));color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 5px 20px rgba(139,26,58,0.4);transition:var(--tr)}
-.fab:active{transform:scale(0.88)}
-.fab-menu{position:fixed;bottom:130px;right:14px;z-index:40;display:flex;flex-direction:column;gap:8px;animation:su .2s}
-.fab-opt{display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--cd);border:1px solid var(--bd);border-radius:var(--r2);color:var(--t1);font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
-.fab-opt:active{background:var(--cd2)}
-.fab-over{position:fixed;inset:0;z-index:35;background:rgba(0,0,0,0.5)}
-.mo{position:fixed;inset:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;animation:su .2s}
-@keyframes su{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-.mo-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:var(--bg);z-index:5}
-.mo-t{font-family:'Playfair Display',serif;font-size:17px;font-weight:600;flex:1}
-.mo-b{padding:14px}
-.mo-f{padding:10px 14px 20px;position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--bd);display:flex;gap:8px}
-.fg{margin-bottom:12px}
-.fl{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:4px;font-weight:600}
-.fi{width:100%;background:var(--inp);border:1px solid var(--bd);border-radius:var(--r2);padding:12px 14px;color:var(--t1);font-size:15px;font-family:'DM Sans',sans-serif;outline:none;transition:var(--tr);-webkit-appearance:none}
-.fi:focus{border-color:var(--bu);box-shadow:0 0 0 3px rgba(139,26,58,0.12)}
-.fr{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.qsz{display:flex;gap:5px;flex-wrap:wrap}
-.qsc{padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--inp);color:var(--t2);font-size:13px;font-weight:600;cursor:pointer;transition:var(--tr);user-select:none;-webkit-user-select:none}
-.qsc.on{background:var(--bu);border-color:var(--bl);color:#fff}
-.qsc:active:not(.on){background:var(--cd2)}
-.cchips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
-.cc{padding:6px 14px;border-radius:18px;border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:12px;cursor:pointer;transition:var(--tr);user-select:none;-webkit-user-select:none}
-.cc:active,.cc.on{background:var(--bu);border-color:var(--bu);color:#fff}
-.msg-tpl{background:var(--cd2);border:1px solid var(--bd);border-radius:var(--r2);padding:10px 12px;font-size:12px;color:var(--t2);white-space:pre-wrap;line-height:1.5;margin-top:6px;position:relative}
-.msg-copy{position:absolute;top:6px;right:6px;padding:6px 12px;border-radius:6px;background:var(--bu);color:#fff;border:none;font-size:11px;font-weight:600;cursor:pointer}
-.tl{border-left:2px solid var(--bd);margin:6px 0 6px 8px;padding-left:12px}
-.tle{padding:3px 0;font-size:11px;color:var(--t2);display:flex;align-items:center;gap:5px;position:relative}
-.tle::before{content:'';position:absolute;left:-17px;width:7px;height:7px;border-radius:50%;border:2px solid var(--bu);background:var(--bg)}
-.tc{position:fixed;bottom:68px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:4px;align-items:center;pointer-events:none}
-.to{background:var(--cd);border:1px solid var(--bu);border-radius:var(--r);padding:10px 20px;color:var(--t1);font-size:13px;box-shadow:0 8px 28px rgba(0,0,0,0.5);animation:tb .25s;white-space:nowrap}
-.to.err{border-color:#ef5350;color:#ef5350}
-@keyframes tb{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.wbox{background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:var(--r2);padding:10px 12px;margin-bottom:10px;font-size:12px;color:#ef5350;display:flex;align-items:center;gap:5px}
-.urgent-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#c2185b;margin-left:4px;animation:pu 1s infinite}
-@keyframes pu{0%,100%{opacity:1}50%{opacity:0.4}}
-.stale-bar{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#ef5350,transparent)}
-.divider{border-top:1px solid var(--bd);margin:10px 0}
-.empty{text-align:center;padding:40px 14px;color:var(--t3);font-size:13px}
-.csug{position:absolute;top:100%;left:0;right:0;background:var(--cd);border:1px solid var(--bd);border-radius:0 0 var(--r2) var(--r2);z-index:20;overflow:hidden}
-.csug-i{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bl2);font-size:13px}
-.csug-i:active{background:var(--cd2)}
+body{background:var(--bg);color:var(--t1);font-family:'Inter',-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.amb{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 60% 40% at 30% 0%,rgba(232,72,128,.04) 0%,transparent 60%),radial-gradient(ellipse 50% 30% at 70% 100%,rgba(168,85,247,.03) 0%,transparent 60%),var(--bg)}
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:rgba(8,6,10,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top:1px solid var(--b);display:flex;padding:4px 0 env(safe-area-inset-bottom,6px);justify-content:space-around}
+.bn{display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 8px;color:var(--t3);font-size:9px;font-weight:600;letter-spacing:.3px;cursor:pointer;transition:all .2s;border:none;background:none;position:relative;min-width:52px}
+.bn.on{color:var(--a)}.bn.on svg{filter:drop-shadow(0 0 8px rgba(232,72,128,.4))}
+.bn .dot{position:absolute;top:2px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--a);box-shadow:0 0 6px var(--a);animation:dp 2s infinite}
+@keyframes dp{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+.main{padding:14px 14px 72px;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative;z-index:1;scroll-behavior:smooth}.main::-webkit-scrollbar{display:none}
+.h1{font-size:26px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(135deg,#fff,rgba(232,72,128,.8));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.h2{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{font-size:11px;color:var(--t2);font-weight:500;margin-top:2px}
+.gc{background:var(--g);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--b);border-radius:var(--r);padding:16px;margin-bottom:10px;transition:transform .15s;position:relative;overflow:hidden}
+.gc:active{transform:scale(.97)}.gc::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent)}
+.bento{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}.bento .gc{margin-bottom:0}.bento .wide{grid-column:span 2}
+.stat-v{font-size:24px;font-weight:800;letter-spacing:-1px;margin:4px 0 2px}
+.stat-l{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--t2);font-weight:700}
+.stat-s{font-size:10px;color:var(--t3);font-weight:500}
+.mbar{height:4px;border-radius:2px;background:rgba(255,255,255,.04);margin-top:8px;overflow:hidden}
+.mbar-f{height:100%;border-radius:2px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.gsrch{display:flex;align-items:center;gap:8px;background:var(--g);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--b);border-radius:28px;padding:11px 16px;margin-bottom:14px;transition:border-color .2s}
+.gsrch:focus-within{border-color:rgba(232,72,128,.3);box-shadow:0 0 0 3px rgba(232,72,128,.06)}
+.gsrch input{background:none;border:none;outline:none;color:var(--t1);font-size:15px;font-family:'Inter',sans-serif;width:100%;font-weight:500}.gsrch input::placeholder{color:var(--t3)}
+.st{display:inline-flex;align-items:center;gap:4px;padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;user-select:none;-webkit-user-select:none;letter-spacing:.2px;border:none}.st:active{transform:scale(.9)}
+.stepper{display:flex;align-items:center;gap:0;margin:10px 0 6px}
+.step{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.06);position:relative;transition:background .3s}.step.done{background:var(--a)}.step.active{background:linear-gradient(90deg,var(--a),var(--a2))}.step:not(:last-child){margin-right:3px}
+.step-dot{position:absolute;right:-4px;top:-3px;width:10px;height:10px;border-radius:50%;background:var(--a);box-shadow:0 0 8px var(--a);z-index:1}
+.ctag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:.3px}
+.szchip{display:inline-flex;align-items:center;border-radius:10px;overflow:hidden;border:1px solid var(--b);margin:2px}
+.szb{padding:8px 11px;background:rgba(255,255,255,.03);color:var(--t2);border:none;cursor:pointer;font-size:15px;display:flex;align-items:center;transition:all .12s;user-select:none;-webkit-user-select:none}.szb:active{background:var(--a);color:#fff}
+.szl{padding:3px 6px;font-size:11px;font-weight:700;color:var(--t2);background:rgba(255,255,255,.02);min-width:28px;text-align:center}.szl.out{opacity:.3;text-decoration:line-through}
+.szq{padding:3px 5px;font-size:13px;font-weight:800;color:var(--t1);min-width:24px;text-align:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:12px 20px;border-radius:14px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;border:none;font-family:'Inter',sans-serif;user-select:none;-webkit-user-select:none;letter-spacing:.2px}.btn:active{transform:scale(.95)}
+.bp{background:linear-gradient(135deg,#e84880,#a855f7);color:#fff;box-shadow:0 4px 20px rgba(232,72,128,.3)}
+.bg2{background:rgba(255,255,255,.05);color:var(--t1);border:1px solid var(--b)}
+.bgh{background:none;color:var(--t2);border:1px solid var(--b)}
+.bsm{padding:8px 14px;font-size:12px;border-radius:10px}.bxs{padding:6px 10px;font-size:11px;border-radius:8px}.bfull{width:100%}
+.fab{position:fixed;bottom:68px;right:14px;z-index:40;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#e84880,#a855f7);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(232,72,128,.35),0 0 40px rgba(168,85,247,.15);transition:all .25s cubic-bezier(.4,0,.2,1)}.fab:active{transform:scale(.85)}
+.fab-m{position:fixed;bottom:132px;right:14px;z-index:40;display:flex;flex-direction:column;gap:8px}
+.fab-o{padding:12px 18px;background:var(--g);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--b2);border-radius:14px;color:var(--t1);font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 8px 32px rgba(0,0,0,.5);white-space:nowrap;transition:all .15s;display:flex;align-items:center;gap:8px}.fab-o:active{transform:scale(.95);background:rgba(232,72,128,.15)}
+.fov{position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+@keyframes fi{from{opacity:0;transform:translateY(12px) scale(.9)}to{opacity:1;transform:translateY(0) scale(1)}}
+.fab-m>div{animation:fi .2s backwards}.fab-m>div:nth-child(2){animation-delay:.06s}
+.mo{position:fixed;inset:0;z-index:100;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;animation:mi .25s}.mo::-webkit-scrollbar{display:none}
+@keyframes mi{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+.mo-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--b);position:sticky;top:0;background:rgba(8,6,10,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:5}
+.mo-t{font-size:17px;font-weight:700;flex:1;letter-spacing:-.3px}.mo-b{padding:16px 14px}
+.mo-f{padding:12px 14px 24px;position:sticky;bottom:0;background:rgba(8,6,10,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--b);display:flex;gap:8px}
+.fg{margin-bottom:14px}
+.fl{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--t3);margin-bottom:5px;font-weight:700}
+.fi{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--b);border-radius:var(--r2);padding:13px 14px;color:var(--t1);font-size:15px;font-family:'Inter',sans-serif;outline:none;transition:all .2s;-webkit-appearance:none}
+.fi:focus{border-color:rgba(232,72,128,.4);box-shadow:0 0 0 3px rgba(232,72,128,.08);background:rgba(255,255,255,.06)}.fi::placeholder{color:var(--t3)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:9px 16px;border-radius:12px;border:1px solid var(--b);background:rgba(255,255,255,.03);color:var(--t2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;user-select:none;-webkit-user-select:none}
+.chip.on{background:linear-gradient(135deg,rgba(232,72,128,.2),rgba(168,85,247,.15));border-color:rgba(232,72,128,.3);color:var(--t1)}.chip:active:not(.on){background:rgba(255,255,255,.06)}
+.cpills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.cpill{padding:7px 16px;border-radius:20px;border:1px solid var(--b);background:none;color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;user-select:none;-webkit-user-select:none}
+.cpill:active,.cpill.on{background:linear-gradient(135deg,var(--a),var(--a2));border-color:transparent;color:#fff}
+.msgt{background:rgba(255,255,255,.03);border:1px solid var(--b);border-radius:var(--r2);padding:12px;font-size:12px;color:var(--t2);white-space:pre-wrap;line-height:1.6;margin-top:8px;position:relative}
+.msgc{position:absolute;top:8px;right:8px;padding:7px 14px;border-radius:10px;background:linear-gradient(135deg,var(--a),var(--a2));color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer}
+.tl{border-left:2px solid var(--b);margin:8px 0 8px 6px;padding-left:14px}
+.tle{padding:4px 0;font-size:11px;color:var(--t2);display:flex;align-items:center;gap:6px;position:relative}
+.tle::before{content:'';position:absolute;left:-19px;width:8px;height:8px;border-radius:50%;border:2px solid var(--a);background:var(--bg)}
+.feed-i{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--b);align-items:flex-start}
+.feed-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.feed-txt{flex:1;font-size:12px;color:var(--t2);line-height:1.4}.feed-txt b{color:var(--t1);font-weight:600}
+.feed-time{font-size:10px;color:var(--t3);white-space:nowrap;margin-top:2px}
+.tc{position:fixed;bottom:68px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:5px;align-items:center;pointer-events:none}
+@keyframes ti{from{opacity:0;transform:translateY(8px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+.to{background:var(--g);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--b2);border-radius:16px;padding:10px 22px;color:var(--t1);font-size:13px;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:ti .2s;white-space:nowrap}.to.err{border-color:rgba(239,68,68,.3);color:#ef4444}
+.wbox{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:var(--r2);padding:10px 14px;margin-bottom:10px;font-size:12px;color:#ef4444;display:flex;align-items:center;gap:6px;font-weight:500}
+.badge-t{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:8px;font-size:9px;font-weight:800;background:linear-gradient(135deg,rgba(245,197,66,.15),rgba(245,197,66,.05));color:#f5c542;border:1px solid rgba(245,197,66,.2);letter-spacing:.3px}
+.badge-n{display:inline-flex;padding:2px 8px;border-radius:8px;font-size:9px;font-weight:800;background:rgba(232,72,128,.12);color:var(--a);letter-spacing:.3px}
+.ud{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--a);margin-left:4px;animation:up 1.5s infinite}
+@keyframes up{0%,100%{box-shadow:0 0 0 0 rgba(232,72,128,.4)}50%{box-shadow:0 0 0 4px rgba(232,72,128,0)}}
+.stale-b{position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#ef4444,transparent);border-radius:var(--r) var(--r) 0 0}
+.divider{border-top:1px solid var(--b);margin:12px 0}
+.empty{text-align:center;padding:40px 14px;color:var(--t3);font-size:13px;font-weight:500}
+.csug{position:absolute;top:100%;left:0;right:0;background:var(--g);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--b);border-radius:0 0 var(--r2) var(--r2);z-index:20;overflow:hidden}
+.csug-i{padding:11px 14px;cursor:pointer;border-bottom:1px solid var(--b);font-size:13px;font-weight:500;transition:background .1s}.csug-i:active{background:rgba(232,72,128,.1)}
+.tabs{display:flex;gap:4px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
+.tab{padding:8px 16px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--b);color:var(--t3);font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer;transition:all .15s;flex-shrink:0}
+.tab.on{background:linear-gradient(135deg,rgba(232,72,128,.15),rgba(168,85,247,.1));border-color:rgba(232,72,128,.2);color:var(--t1)}
+.hscr{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none;scroll-snap-type:x mandatory}.hscr::-webkit-scrollbar{display:none}.hscr>.gc{min-width:140px;flex-shrink:0;scroll-snap-align:start;margin-bottom:0}
+.cn{font-weight:700;font-size:14px;color:var(--t1);letter-spacing:-.2px}
+.cp{font-weight:800;font-size:15px;background:linear-gradient(135deg,#f5c542,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.crow{display:flex;align-items:center;justify-content:space-between;gap:8px}
 `;
 
-// ═══ COMPONENTS ═══
-function SizeChips({ sizes, onChange }) {
-  return React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 } },
-    Object.entries(sizes).map(([s, q]) =>
-      React.createElement("div", { key: s, className: "sz-chip" },
-        React.createElement("button", { className: "sz-btn", onClick: () => onChange(s, Math.max(0, q - 1)) }, I.minus),
-        React.createElement("div", { className: `sz-label ${q === 0 ? "out" : ""}` }, s),
-        React.createElement("div", { className: "sz-qty" }, q),
-        React.createElement("button", { className: "sz-btn", onClick: () => onChange(s, q + 1) }, I.pls)
-      )
-    )
-  );
-}
+const ic=(d,w=22,s=2)=>React.createElement("svg",{width:w,height:w,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:s,strokeLinecap:"round",strokeLinejoin:"round"},d);
+const I={
+home:ic([React.createElement("path",{key:0,d:"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"}),React.createElement("polyline",{key:1,points:"9 22 9 12 15 12 15 22"})]),
+tag:ic([React.createElement("path",{key:0,d:"M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"}),React.createElement("line",{key:1,x1:7,y1:7,x2:7.01,y2:7})]),
+box:ic([React.createElement("path",{key:0,d:"M21 10V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16v-2"}),React.createElement("polyline",{key:1,points:"3.27 6.96 12 12.01 20.73 6.96"}),React.createElement("line",{key:2,x1:12,y1:22.08,x2:12,y2:12})]),
+usr:ic([React.createElement("path",{key:0,d:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"}),React.createElement("circle",{key:1,cx:9,cy:7,r:4})]),
+dol:ic([React.createElement("line",{key:0,x1:12,y1:1,x2:12,y2:23}),React.createElement("path",{key:1,d:"M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"})]),
+plus:ic([React.createElement("line",{key:0,x1:12,y1:5,x2:12,y2:19}),React.createElement("line",{key:1,x1:5,y1:12,x2:19,y2:12})],24,2.5),
+back:ic([React.createElement("polyline",{key:0,points:"15 18 9 12 15 6"})]),
+chk:ic([React.createElement("polyline",{key:0,points:"20 6 9 17 4 12"})],16,2.5),
+srch:ic([React.createElement("circle",{key:0,cx:11,cy:11,r:8}),React.createElement("line",{key:1,x1:21,y1:21,x2:16.65,y2:16.65})],18),
+nxt:ic([React.createElement("polyline",{key:0,points:"9 18 15 12 9 6"})],12,2.5),
+del:ic([React.createElement("polyline",{key:0,points:"3 6 5 6 21 6"}),React.createElement("path",{key:1,d:"M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"})],16),
+ed:ic([React.createElement("path",{key:0,d:"M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"}),React.createElement("path",{key:1,d:"M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"})],16),
+copy:ic([React.createElement("rect",{key:0,x:9,y:9,width:13,height:13,rx:2}),React.createElement("path",{key:1,d:"M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"})],16),
+msg:ic([React.createElement("path",{key:0,d:"M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"})],16),
+dl:ic([React.createElement("path",{key:0,d:"M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"}),React.createElement("polyline",{key:1,points:"7 10 12 15 17 10"}),React.createElement("line",{key:2,x1:12,y1:15,x2:12,y2:3})],16),
+fire:ic([React.createElement("path",{key:0,d:"M12 2c0 4-4 6-4 10a4 4 0 108 0c0-4-4-6-4-10z"})],14),
+minus:ic([React.createElement("line",{key:0,x1:5,y1:12,x2:19,y2:12})],16,2.5),
+pls:ic([React.createElement("line",{key:0,x1:12,y1:5,x2:12,y2:19}),React.createElement("line",{key:1,x1:5,y1:12,x2:19,y2:12})],16,2.5),
+star:ic([React.createElement("polygon",{key:0,points:"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"})],12),
+warn:ic([React.createElement("path",{key:0,d:"M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"}),React.createElement("line",{key:1,x1:12,y1:9,x2:12,y2:13}),React.createElement("line",{key:2,x1:12,y1:17,x2:12.01,y2:17})],14),
+};
 
-function StatusBadge({ status, onClick }) {
-  const c = ST_CLR[status] || "var(--t3)";
-  return React.createElement("span", { className: "st", style: { color: c, borderColor: c + "40", background: c + "12" }, onClick }, status, NEXT_ST[status] && React.createElement("span", { style: { marginLeft: 2 } }, I.nxt));
-}
+const h=React.createElement;
+function StBadge({status,onClick}){return h("span",{className:"st",style:{color:SC[status],background:SB[status]},onClick},status,NS[status]&&h("span",{style:{marginLeft:2}},I.nxt))}
+function Stepper({status}){const i=STEPS.indexOf(status);return h("div",{className:"stepper"},STEPS.map((s,j)=>h("div",{key:s,className:`step ${j<i?"done":""} ${j===i?"active":""}`,style:j===i?{background:`linear-gradient(90deg,${SC[s]||"var(--a)"},transparent)`}:j<i?{background:SC[s]||"var(--a)"}:{}},j===i&&h("div",{className:"step-dot",style:{background:SC[s],boxShadow:`0 0 8px ${SC[s]}`}}))))}
+function CTag({cat}){const c=CC[cat]||"var(--a)";return h("span",{className:"ctag",style:{background:c+"18",color:c}},cat)}
+function SzChips({sizes,onChange}){return h("div",{style:{display:"flex",flexWrap:"wrap",gap:3}},Object.entries(sizes).map(([s,q])=>h("div",{key:s,className:"szchip"},h("button",{className:"szb",onClick:()=>onChange(s,Math.max(0,q-1))},I.minus),h("div",{className:`szl ${q===0?"out":""}`},s),h("div",{className:"szq"},q),h("button",{className:"szb",onClick:()=>onChange(s,q+1)},I.pls))))}
 
-// ═══ ADD PRODUCT ═══
-function AddProductModal({ onSave, onClose }) {
-  const [n, setN] = useState(""); const [p, setP] = useState(""); const [c, setC] = useState(""); const [cat, setCat] = useState(CATS[0]);
-  const [sz, setSz] = useState({ S: 1, M: 1, L: 1 });
-  const toggle = s => setSz(v => { const x = { ...v }; if (x[s] !== undefined) delete x[s]; else x[s] = 1; return x; });
-  const save = () => { if (!n || !p) return; onSave({ id: uid(), name: n, sellPrice: +p, costPrice: +(c || 0), category: cat, sizes: { ...sz }, sku: "", minStock: 2, description: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); };
-  return React.createElement("div", { className: "mo" },
-    React.createElement("div", { className: "mo-h" }, React.createElement("button", { className: "bgh btn bsm", onClick: onClose }, I.back), React.createElement("div", { className: "mo-t" }, "Новый товар")),
-    React.createElement("div", { className: "mo-b" },
-      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Название"), React.createElement("input", { className: "fi", value: n, onChange: e => setN(e.target.value), placeholder: "Платье макси", autoFocus: true })),
-      React.createElement("div", { className: "fr" },
-        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Цена"), React.createElement("input", { className: "fi", type: "number", value: p, onChange: e => setP(e.target.value), placeholder: "0" })),
-        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Себестоимость"), React.createElement("input", { className: "fi", type: "number", value: c, onChange: e => setC(e.target.value), placeholder: "0" }))),
-      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Категория"), React.createElement("div", { className: "qsz" }, CATS.map(x => React.createElement("div", { key: x, className: `qsc ${cat === x ? "on" : ""}`, onClick: () => setCat(x) }, x)))),
-      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Размеры"), React.createElement("div", { className: "qsz" }, SIZES.map(s => React.createElement("div", { key: s, className: `qsc ${sz[s] !== undefined ? "on" : ""}`, onClick: () => toggle(s) }, s))))
-    ),
-    React.createElement("div", { className: "mo-f" }, React.createElement("button", { className: "btn bp bfull", onClick: save }, I.chk, " Добавить товар"))
-  );
-}
+function AddProdModal({onSave,onClose}){const[n,sN]=useState("");const[p,sP]=useState("");const[c,sC]=useState("");const[cat,sCat]=useState(CATS[0]);const[sz,sSz]=useState({S:1,M:1,L:1});
+const tog=s=>sSz(v=>{const x={...v};if(x[s]!==undefined)delete x[s];else x[s]=1;return x});
+const save=()=>{if(!n||!p)return;onSave({id:uid(),name:n,sellPrice:+p,costPrice:+(c||0),category:cat,sizes:{...sz},sku:"",minStock:2,description:"",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()})};
+return h("div",{className:"mo"},h("div",{className:"mo-h"},h("button",{className:"btn bgh bsm",onClick:onClose},I.back),h("div",{className:"mo-t"},"Новый товар")),
+h("div",{className:"mo-b"},h("div",{className:"fg"},h("label",{className:"fl"},"Название"),h("input",{className:"fi",value:n,onChange:e=>sN(e.target.value),placeholder:"Платье макси",autoFocus:true})),
+h("div",{className:"fr"},h("div",{className:"fg"},h("label",{className:"fl"},"Цена"),h("input",{className:"fi",type:"number",value:p,onChange:e=>sP(e.target.value),placeholder:"0"})),h("div",{className:"fg"},h("label",{className:"fl"},"Себестоимость"),h("input",{className:"fi",type:"number",value:c,onChange:e=>sC(e.target.value),placeholder:"0"}))),
+h("div",{className:"fg"},h("label",{className:"fl"},"Категория"),h("div",{className:"chips"},CATS.map(x=>h("div",{key:x,className:`chip ${cat===x?"on":""}`,onClick:()=>sCat(x)},x)))),
+h("div",{className:"fg"},h("label",{className:"fl"},"Размеры"),h("div",{className:"chips"},SIZES.map(s=>h("div",{key:s,className:`chip ${sz[s]!==undefined?"on":""}`,onClick:()=>tog(s)},s))))),
+h("div",{className:"mo-f"},h("button",{className:"btn bp bfull",onClick:save},I.chk," Добавить")))}
 
-// ═══ ADD ORDER ═══
-function AddOrderModal({ products, clients, onSave, onClose, toast }) {
-  const [nm, setNm] = useState(""); const [ph, setPh] = useState(""); const [city, setCity] = useState(""); const [del, setDel] = useState("СДЭК");
-  const [items, setItems] = useState([{ productId: "", size: "", qty: 1 }]); const [urgent, setUrgent] = useState(false);
-  const [sug, setSug] = useState([]);
-  useEffect(() => { if (nm.length < 2) { setSug([]); return; } setSug(clients.filter(c => c.name.toLowerCase().includes(nm.toLowerCase())).slice(0, 3)); }, [nm, clients]);
-  const pickC = cl => { setNm(cl.name); setPh(cl.phone || ""); setCity(cl.city || ""); setSug([]); };
-  const setI = (i, k, v) => { const it = [...items]; it[i] = { ...it[i], [k]: v }; if (k === "productId") it[i].size = ""; setItems(it); };
-  const total = calcTotal(items, products);
-  const warns = useMemo(() => checkStock(products, items.filter(it => it.productId && it.size)), [products, items]);
-  const save = () => {
-    if (!nm || !items[0].productId) return;
-    if (warns.length > 0) { toast("⛔ " + warns[0], "err"); return; }
-    const fi = items.map(it => { if (it.productId && !it.size) { const pr = products.find(x => x.id === it.productId); if (pr) { const a = Object.entries(pr.sizes).find(([, q]) => q > 0); if (a) return { ...it, size: a[0] }; } } return it; }).filter(it => it.productId);
-    onSave({ id: uid(), clientName: nm, clientPhone: ph, clientCity: city, clientAddress: "", deliveryMethod: del, trackNumber: "", status: "Новый", urgent, items: fi, discount: 0, notes: "", prepaid: false, total, history: [{ status: "Новый", date: new Date().toISOString() }], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-  };
-  return React.createElement("div", { className: "mo" },
-    React.createElement("div", { className: "mo-h" }, React.createElement("button", { className: "bgh btn bsm", onClick: onClose }, I.back), React.createElement("div", { className: "mo-t" }, "Новый заказ"), total > 0 && React.createElement("span", { style: { fontWeight: 700, color: "var(--go)", fontSize: 16 } }, fmt(total))),
-    React.createElement("div", { className: "mo-b" },
-      React.createElement("div", { className: "fg", style: { position: "relative" } }, React.createElement("label", { className: "fl" }, "Клиент"), React.createElement("input", { className: "fi", value: nm, onChange: e => setNm(e.target.value), placeholder: "Имя" }),
-        sug.length > 0 && React.createElement("div", { className: "csug" }, sug.map(c => React.createElement("div", { key: c.id, className: "csug-i", onClick: () => pickC(c) }, React.createElement("b", null, c.name), " ", React.createElement("span", { style: { color: "var(--t3)" } }, c.phone, " · ", c.city))))),
-      React.createElement("div", { className: "fr" },
-        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Телефон"), React.createElement("input", { className: "fi", value: ph, onChange: e => setPh(e.target.value), placeholder: "+7..." })),
-        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Доставка"), React.createElement("select", { className: "fi", value: del, onChange: e => setDel(e.target.value) }, DELIVERY.map(d => React.createElement("option", { key: d }, d))))),
-      React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Город"), React.createElement("div", { className: "cchips" }, CITIES.map(c => React.createElement("div", { key: c, className: `cc ${city === c ? "on" : ""}`, onClick: () => setCity(city === c ? "" : c) }, c)))),
-      React.createElement("div", { className: "divider" }),
-      React.createElement("label", { className: "fl" }, "Товары"),
-      items.map((it, i) => { const pr = products.find(x => x.id === it.productId); return React.createElement("div", { key: i, style: { marginBottom: 10 } },
-        React.createElement("select", { className: "fi", value: it.productId, onChange: e => setI(i, "productId", e.target.value), style: { marginBottom: 6 } }, React.createElement("option", { value: "" }, "— Товар —"), products.map(p => { const tot = Object.values(p.sizes).reduce((a, b) => a + b, 0); return React.createElement("option", { key: p.id, value: p.id, disabled: tot === 0 }, p.name, " · ", fmt(p.sellPrice), tot === 0 ? " (нет)" : ""); })),
-        pr && React.createElement("div", { className: "qsz" }, Object.entries(pr.sizes).map(([s, q]) => React.createElement("div", { key: s, className: `qsc ${it.size === s ? "on" : ""}`, onClick: () => q > 0 && setI(i, "size", s), style: q <= 0 ? { opacity: 0.3, textDecoration: "line-through" } : {} }, s, " ", React.createElement("span", { style: { fontSize: 10, opacity: 0.6 } }, "(", q, ")")))),
-        items.length > 1 && React.createElement("button", { className: "btn bgh bsm", onClick: () => setItems(p => p.filter((_, j) => j !== i)), style: { marginTop: 6, color: "#ef5350" } }, I.del, " Убрать")); }),
-      React.createElement("button", { className: "btn bg2 bsm", onClick: () => setItems(p => [...p, { productId: "", size: "", qty: 1 }]) }, I.pls, " Ещё товар"),
-      warns.length > 0 && React.createElement("div", { className: "wbox" }, I.warn, " ", warns[0]),
-      React.createElement("div", { className: "divider" }),
-      React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: urgent ? "#c2185b" : "var(--t2)", padding: "6px 0" } }, React.createElement("input", { type: "checkbox", checked: urgent, onChange: e => setUrgent(e.target.checked), style: { accentColor: "#c2185b", width: 18, height: 18 } }), I.fire, " Срочный заказ")
-    ),
-    React.createElement("div", { className: "mo-f" }, React.createElement("button", { className: "btn bp bfull", onClick: save }, I.chk, " Создать заказ"))
-  );
-}
+function AddOrdModal({products,clients,onSave,onClose,toast}){const[nm,sNm]=useState("");const[ph,sPh]=useState("");const[city,sCity]=useState("");const[del,sDel]=useState("СДЭК");
+const[items,sItems]=useState([{productId:"",size:"",qty:1}]);const[urg,sUrg]=useState(false);const[sug,sSug]=useState([]);
+useEffect(()=>{if(nm.length<2){sSug([]);return}sSug(clients.filter(c=>c.name.toLowerCase().includes(nm.toLowerCase())).slice(0,3))},[nm,clients]);
+const pickC=cl=>{sNm(cl.name);sPh(cl.phone||"");sCity(cl.city||"");sSug([])};
+const sI=(i,k,v)=>{const it=[...items];it[i]={...it[i],[k]:v};if(k==="productId")it[i].size="";sItems(it)};
+const total=calcTotal(items,products);const warns=useMemo(()=>checkStock(products,items.filter(it=>it.productId&&it.size)),[products,items]);
+const save=()=>{if(!nm||!items[0].productId)return;if(warns.length>0){toast("⛔ "+warns[0],"err");return}
+const fi=items.map(it=>{if(it.productId&&!it.size){const pr=products.find(x=>x.id===it.productId);if(pr){const a=Object.entries(pr.sizes).find(([,q])=>q>0);if(a)return{...it,size:a[0]}}}return it}).filter(it=>it.productId);
+onSave({id:uid(),clientName:nm,clientPhone:ph,clientCity:city,clientAddress:"",deliveryMethod:del,trackNumber:"",status:"Новый",urgent:urg,items:fi,discount:0,notes:"",prepaid:false,total,history:[{status:"Новый",date:new Date().toISOString()}],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()})};
+return h("div",{className:"mo"},h("div",{className:"mo-h"},h("button",{className:"btn bgh bsm",onClick:onClose},I.back),h("div",{className:"mo-t"},"Новый заказ"),total>0&&h("span",{className:"cp"},fmt(total))),
+h("div",{className:"mo-b"},h("div",{className:"fg",style:{position:"relative"}},h("label",{className:"fl"},"Клиент"),h("input",{className:"fi",value:nm,onChange:e=>sNm(e.target.value),placeholder:"Имя"}),sug.length>0&&h("div",{className:"csug"},sug.map(c=>h("div",{key:c.id,className:"csug-i",onClick:()=>pickC(c)},h("b",null,c.name)," ",h("span",{style:{color:"var(--t3)"}},c.phone," · ",c.city))))),
+h("div",{className:"fr"},h("div",{className:"fg"},h("label",{className:"fl"},"Телефон"),h("input",{className:"fi",value:ph,onChange:e=>sPh(e.target.value),placeholder:"+7..."})),h("div",{className:"fg"},h("label",{className:"fl"},"Доставка"),h("select",{className:"fi",value:del,onChange:e=>sDel(e.target.value)},DELIVERY.map(d=>h("option",{key:d},d))))),
+h("div",{className:"fg"},h("label",{className:"fl"},"Город"),h("div",{className:"cpills"},CITIES.map(c=>h("div",{key:c,className:`cpill ${city===c?"on":""}`,onClick:()=>sCity(city===c?"":c)},c)))),
+h("div",{className:"divider"}),h("label",{className:"fl"},"Товары"),
+items.map((it,i)=>{const pr=products.find(x=>x.id===it.productId);return h("div",{key:i,style:{marginBottom:10}},h("select",{className:"fi",value:it.productId,onChange:e=>sI(i,"productId",e.target.value),style:{marginBottom:6}},h("option",{value:""},"— Товар —"),products.map(p=>{const t=Object.values(p.sizes).reduce((a,b)=>a+b,0);return h("option",{key:p.id,value:p.id,disabled:t===0},p.name," · ",fmt(p.sellPrice),t===0?" (нет)":"")})),
+pr&&h("div",{className:"chips"},Object.entries(pr.sizes).map(([s,q])=>h("div",{key:s,className:`chip ${it.size===s?"on":""}`,onClick:()=>q>0&&sI(i,"size",s),style:q<=0?{opacity:.3}:{}},s," ",h("span",{style:{fontSize:10,opacity:.5}},"(",q,")")))),items.length>1&&h("button",{className:"btn bgh bxs",onClick:()=>sItems(p=>p.filter((_,j)=>j!==i)),style:{marginTop:6,color:"#ef4444"}},I.del," Убрать"))}),
+h("button",{className:"btn bg2 bsm",onClick:()=>sItems(p=>[...p,{productId:"",size:"",qty:1}])},I.pls," Ещё товар"),
+warns.length>0&&h("div",{className:"wbox"},I.warn," ",warns[0]),h("div",{className:"divider"}),
+h("label",{style:{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,fontWeight:600,color:urg?"var(--a)":"var(--t2)",padding:"6px 0"}},h("input",{type:"checkbox",checked:urg,onChange:e=>sUrg(e.target.checked),style:{accentColor:"var(--a)",width:18,height:18}}),I.fire," Срочный заказ")),
+h("div",{className:"mo-f"},h("button",{className:"btn bp bfull",onClick:save},I.chk," Создать заказ")))}
 
-// ═══ VIEW ORDER ═══
-function ViewOrderModal({ order, products, onSave, onClose, toast }) {
-  const [f, setF] = useState({ ...order, items: order.items.map(x => ({ ...x })) });
-  const [editing, setEditing] = useState(false);
-  const [msgType, setMsgType] = useState(null);
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const total = calcTotal(f.items, products, f.discount);
-  const history = f.history || [];
-  const msg = msgType ? getMsg({ ...f, total }, products, msgType) : "";
-  const save = () => { onSave({ ...f, total, discount: +f.discount || 0, updatedAt: new Date().toISOString() }); };
+function ViewOrdModal({order,products,onSave,onClose,toast}){const[f,sF]=useState({...order,items:order.items.map(x=>({...x}))});const[ed,sEd]=useState(false);const[mt,sMt]=useState(null);
+const set=(k,v)=>sF(p=>({...p,[k]:v}));const total=calcTotal(f.items,products,f.discount);const hist=f.history||[];const msg=mt?getMsg({...f,total},products,mt):"";
+const save=()=>{onSave({...f,total,discount:+f.discount||0,updatedAt:new Date().toISOString()})};
+const nxt=()=>{const ns=NS[f.status];if(ns)sF(p=>({...p,status:ns,history:[...(p.history||[]),{status:ns,date:new Date().toISOString()}]}))};
+return h("div",{className:"mo"},h("div",{className:"mo-h"},h("button",{className:"btn bgh bsm",onClick:onClose},I.back),h("div",{className:"mo-t"},"Заказ"),h(StBadge,{status:f.status,onClick:nxt})),
+h("div",{className:"mo-b"},!ed?h(React.Fragment,null,
+h(Stepper,{status:f.status}),
+h("div",{style:{fontSize:20,fontWeight:800,marginBottom:3,letterSpacing:-.5}},f.clientName,f.urgent&&h("span",{className:"ud"})),
+h("div",{style:{fontSize:13,color:"var(--t2)",marginBottom:2,fontWeight:500}},f.clientPhone||"—"),
+h("div",{style:{fontSize:13,color:"var(--t2)",marginBottom:10,fontWeight:500}},"📍 ",f.clientCity||"—"," · ",f.deliveryMethod),
+f.trackNumber&&h("div",{className:"gc",style:{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:12}},h("span",{style:{fontSize:11,color:"var(--t3)",fontWeight:600}},"ТРЕК"),h("span",{style:{fontFamily:"monospace",fontSize:15,color:"var(--t1)",fontWeight:700,flex:1}},f.trackNumber),h("button",{className:"btn bp bxs",onClick:()=>cp(f.trackNumber,toast)},I.copy," Копировать")),
+h("div",{className:"divider"}),
+f.items.map((it,i)=>{const p=products.find(x=>x.id===it.productId);return h("div",{key:i,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",alignItems:"center"}},h("div",null,h("span",{style:{fontWeight:600}},p?p.name:"?"),h(CTag,{cat:p?p.category:""}),h("span",{style:{marginLeft:4,fontSize:11,color:"var(--t3)"}},it.size," ×",it.qty)),h("span",{className:"cp",style:{fontSize:13}},p?fmt(p.sellPrice*(+it.qty||1)):""))}),
+h("div",{className:"divider"}),
+h("div",{className:"crow"},h("span",{style:{fontSize:12,color:"var(--t2)",fontWeight:500}},f.discount?`Скидка: ${fmt(f.discount)} `:"",f.prepaid?"✓ Оплачен":""),h("span",{style:{fontSize:24,fontWeight:900,background:"linear-gradient(135deg,var(--gold),#f59e0b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},fmt(total))),
+f.notes&&h("div",{style:{marginTop:8,fontSize:12,color:"var(--t2)",background:"rgba(255,255,255,.03)",padding:"10px 12px",borderRadius:12,fontWeight:500}},"💬 ",f.notes),
+h("div",{className:"divider"}),h("label",{className:"fl"},"Сообщение клиенту"),
+h("div",{style:{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}},[["confirm","Подтвердить"],["ready","Собран"],["shipped","Отправлен"],["delivered","Доставлен"]].map(([k,l])=>h("button",{key:k,className:`btn ${mt===k?"bp":"bg2"} bxs`,onClick:()=>sMt(mt===k?null:k)},I.msg," ",l))),
+msg&&h("div",{className:"msgt"},msg,h("button",{className:"msgc",onClick:()=>cp(msg,toast)},"Копировать")),
+hist.length>0&&h(React.Fragment,null,h("div",{className:"divider"}),h("label",{className:"fl"},"История"),h("div",{className:"tl"},hist.map((x,i)=>h("div",{key:i,className:"tle"},h("span",{style:{color:SC[x.status],fontWeight:700}},x.status),h("span",{style:{color:"var(--t3)"}},relTime(x.date))))))
+):h(React.Fragment,null,
+h("div",{className:"fg"},h("label",{className:"fl"},"Имя"),h("input",{className:"fi",value:f.clientName,onChange:e=>set("clientName",e.target.value)})),
+h("div",{className:"fr"},h("div",{className:"fg"},h("label",{className:"fl"},"Телефон"),h("input",{className:"fi",value:f.clientPhone||"",onChange:e=>set("clientPhone",e.target.value)})),h("div",{className:"fg"},h("label",{className:"fl"},"Город"),h("input",{className:"fi",value:f.clientCity||"",onChange:e=>set("clientCity",e.target.value)}))),
+h("div",{className:"fg"},h("label",{className:"fl"},"Адрес"),h("input",{className:"fi",value:f.clientAddress||"",onChange:e=>set("clientAddress",e.target.value)})),
+h("div",{className:"fr"},h("div",{className:"fg"},h("label",{className:"fl"},"Трек"),h("input",{className:"fi",value:f.trackNumber||"",onChange:e=>set("trackNumber",e.target.value)})),h("div",{className:"fg"},h("label",{className:"fl"},"Доставка"),h("select",{className:"fi",value:f.deliveryMethod,onChange:e=>set("deliveryMethod",e.target.value)},DELIVERY.map(d=>h("option",{key:d},d))))),
+h("div",{className:"fr"},h("div",{className:"fg"},h("label",{className:"fl"},"Скидка"),h("input",{className:"fi",type:"number",value:f.discount||0,onChange:e=>set("discount",e.target.value)})),h("div",{className:"fg"},h("label",{className:"fl"},"Статус"),h("select",{className:"fi",value:f.status,onChange:e=>set("status",e.target.value)},STATUSES.map(s=>h("option",{key:s},s))))),
+h("div",{style:{display:"flex",gap:14,padding:"6px 0"}},h("label",{style:{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:600,color:"var(--t2)"}},h("input",{type:"checkbox",checked:f.prepaid||false,onChange:e=>set("prepaid",e.target.checked),style:{accentColor:"var(--a)",width:16,height:16}}),"Оплачен"),
+h("label",{style:{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:600,color:f.urgent?"var(--a)":"var(--t2)"}},h("input",{type:"checkbox",checked:f.urgent||false,onChange:e=>set("urgent",e.target.checked),style:{accentColor:"var(--a)",width:16,height:16}}),I.fire," Срочный")),
+h("div",{className:"fg"},h("label",{className:"fl"},"Заметки"),h("textarea",{className:"fi",value:f.notes||"",onChange:e=>set("notes",e.target.value),style:{resize:"vertical",minHeight:50}})))),
+h("div",{className:"mo-f"},!ed?h(React.Fragment,null,h("button",{className:"btn bg2 bfull",onClick:()=>sEd(true)},I.ed," Ред."),h("button",{className:"btn bp bfull",onClick:save},I.chk," Сохранить")):h(React.Fragment,null,h("button",{className:"btn bgh bfull",onClick:()=>sEd(false)},"Назад"),h("button",{className:"btn bp bfull",onClick:()=>{save();sEd(false)}},I.chk," Сохранить"))))}
 
-  return React.createElement("div", { className: "mo" },
-    React.createElement("div", { className: "mo-h" }, React.createElement("button", { className: "bgh btn bsm", onClick: onClose }, I.back), React.createElement("div", { className: "mo-t" }, "Заказ"),
-      React.createElement(StatusBadge, { status: f.status, onClick: () => { const ns = NEXT_ST[f.status]; if (ns) { setF(p => ({ ...p, status: ns, history: [...(p.history || []), { status: ns, date: new Date().toISOString() }] })); } } })),
-    React.createElement("div", { className: "mo-b" },
-      !editing ? React.createElement(React.Fragment, null,
-        React.createElement("div", { style: { fontSize: 18, fontWeight: 600, marginBottom: 3 } }, f.clientName, f.urgent && React.createElement("span", { className: "urgent-dot" })),
-        React.createElement("div", { style: { fontSize: 13, color: "var(--t2)", marginBottom: 2 } }, f.clientPhone || "—"),
-        React.createElement("div", { style: { fontSize: 13, color: "var(--t2)", marginBottom: 10 } }, "📍 ", f.clientCity || "—", " · ", f.deliveryMethod),
-        f.trackNumber && React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10, background: "var(--cd2)", padding: "8px 12px", borderRadius: "var(--r2)" } },
-          React.createElement("span", { style: { fontSize: 12, color: "var(--t3)" } }, "Трек:"),
-          React.createElement("span", { style: { fontFamily: "monospace", fontSize: 14, color: "var(--t1)" } }, f.trackNumber),
-          React.createElement("button", { className: "btn bg2 bsm", onClick: () => cp(f.trackNumber, toast) }, I.copy)),
-        React.createElement("div", { className: "divider" }),
-        f.items.map((it, i) => { const p = products.find(x => x.id === it.productId); return React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", padding: "5px 0" } },
-          React.createElement("div", null, React.createElement("span", { style: { fontWeight: 500, color: "var(--t1)" } }, p ? p.name : "?"), React.createElement("span", { className: "tag", style: { marginLeft: 6 } }, it.size), " ×", it.qty),
-          React.createElement("span", { className: "tp" }, p ? fmt(p.sellPrice * (+it.qty || 1)) : "")); }),
-        React.createElement("div", { className: "divider" }),
-        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-          React.createElement("span", { style: { fontSize: 12, color: "var(--t2)" } }, f.discount ? `Скидка: ${fmt(f.discount)} ` : "", f.prepaid ? "✓ Оплачен" : ""),
-          React.createElement("span", { style: { fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 700, color: "var(--go)" } }, fmt(total))),
-        f.notes && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "var(--t2)", background: "var(--cd2)", padding: "8px 12px", borderRadius: "var(--r2)" } }, "💬 ", f.notes),
-        React.createElement("div", { className: "divider" }),
-        React.createElement("label", { className: "fl" }, "Сообщение клиенту"),
-        React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 5 } },
-          [["confirm", "Подтверждение"], ["ready", "Собран"], ["shipped", "Отправлен"], ["delivered", "Доставлен"]].map(([k, l]) => React.createElement("button", { key: k, className: `btn ${msgType === k ? "bp" : "bg2"} bsm`, onClick: () => setMsgType(msgType === k ? null : k) }, I.msg, " ", l))),
-        msg && React.createElement("div", { className: "msg-tpl" }, msg, React.createElement("button", { className: "msg-copy", onClick: () => cp(msg, toast) }, "Копировать")),
-        history.length > 0 && React.createElement(React.Fragment, null, React.createElement("div", { className: "divider" }), React.createElement("label", { className: "fl" }, "История"),
-          React.createElement("div", { className: "tl" }, history.map((h, i) => React.createElement("div", { key: i, className: "tle" }, React.createElement("span", { style: { color: ST_CLR[h.status], fontWeight: 600 } }, h.status), React.createElement("span", { style: { color: "var(--t3)" } }, fmtDT(h.date))))))
-      ) : React.createElement(React.Fragment, null,
-        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Имя"), React.createElement("input", { className: "fi", value: f.clientName, onChange: e => set("clientName", e.target.value) })),
-        React.createElement("div", { className: "fr" },
-          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Телефон"), React.createElement("input", { className: "fi", value: f.clientPhone || "", onChange: e => set("clientPhone", e.target.value) })),
-          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Город"), React.createElement("input", { className: "fi", value: f.clientCity || "", onChange: e => set("clientCity", e.target.value) }))),
-        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Адрес"), React.createElement("input", { className: "fi", value: f.clientAddress || "", onChange: e => set("clientAddress", e.target.value) })),
-        React.createElement("div", { className: "fr" },
-          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Трек"), React.createElement("input", { className: "fi", value: f.trackNumber || "", onChange: e => set("trackNumber", e.target.value) })),
-          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Доставка"), React.createElement("select", { className: "fi", value: f.deliveryMethod, onChange: e => set("deliveryMethod", e.target.value) }, DELIVERY.map(d => React.createElement("option", { key: d }, d))))),
-        React.createElement("div", { className: "fr" },
-          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Скидка"), React.createElement("input", { className: "fi", type: "number", value: f.discount || 0, onChange: e => set("discount", e.target.value) })),
-          React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Статус"), React.createElement("select", { className: "fi", value: f.status, onChange: e => set("status", e.target.value) }, STATUSES.map(s => React.createElement("option", { key: s }, s))))),
-        React.createElement("div", { style: { display: "flex", gap: 12, padding: "6px 0" } },
-          React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--t2)" } }, React.createElement("input", { type: "checkbox", checked: f.prepaid || false, onChange: e => set("prepaid", e.target.checked), style: { accentColor: "var(--bu)", width: 16, height: 16 } }), "Оплачен"),
-          React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: f.urgent ? "#c2185b" : "var(--t2)" } }, React.createElement("input", { type: "checkbox", checked: f.urgent || false, onChange: e => set("urgent", e.target.checked), style: { accentColor: "#c2185b", width: 16, height: 16 } }), I.fire, " Срочный")),
-        React.createElement("div", { className: "fg" }, React.createElement("label", { className: "fl" }, "Заметки"), React.createElement("textarea", { className: "fi", value: f.notes || "", onChange: e => set("notes", e.target.value), style: { resize: "vertical", minHeight: 50 } }))
-      )
-    ),
-    React.createElement("div", { className: "mo-f" },
-      !editing ? React.createElement(React.Fragment, null,
-        React.createElement("button", { className: "btn bg2 bfull", onClick: () => setEditing(true) }, I.ed, " Редактировать"),
-        React.createElement("button", { className: "btn bp bfull", onClick: save }, I.chk, " Сохранить")) :
-      React.createElement(React.Fragment, null,
-        React.createElement("button", { className: "btn bgh bfull", onClick: () => setEditing(false) }, "Назад"),
-        React.createElement("button", { className: "btn bp bfull", onClick: () => { save(); setEditing(false); } }, I.chk, " Сохранить")))
-  );
-}
+function HomePage({products,orders}){const stock=products.reduce((s,p)=>s+Object.values(p.sizes).reduce((a,b)=>a+b,0),0);const act=orders.filter(o=>["Новый","Собирается","Отправлен"].includes(o.status));const done=orders.filter(o=>o.status==="Доставлен");const rev=done.reduce((s,o)=>s+(o.total||0),0);const cost=done.reduce((s,o)=>s+o.items.reduce((is,it)=>{const p=products.find(x=>x.id===it.productId);return is+(p?p.costPrice*(+it.qty||1):0)},0),0);const profit=rev-cost;const newO=orders.filter(o=>o.status==="Новый").length;const stale=orders.filter(o=>o.status==="Новый"&&daysAgo(o.createdAt)>=2);const low=products.filter(p=>{const t=Object.values(p.sizes).reduce((a,b)=>a+b,0);return t>0&&t<=p.minStock});const out=products.filter(p=>Object.keys(p.sizes).length>0&&Object.values(p.sizes).reduce((a,b)=>a+b,0)===0);
+const feed=[];orders.forEach(o=>{(o.history||[]).forEach(x=>{feed.push({type:x.status,name:o.clientName,date:x.date,color:SC[x.status]})})});feed.sort((a,b)=>new Date(b.date)-new Date(a.date));
+return h("div",null,h("div",{className:"h1"},"FUFFSHAK"),h("div",{className:"sub",style:{marginBottom:14}},new Date().toLocaleDateString("ru-RU",{weekday:"long",day:"numeric",month:"long"})),
+h("div",{className:"bento"},h("div",{className:"gc"},h("div",{className:"stat-l"},"СКЛАД"),h("div",{className:"stat-v"},stock),h("div",{className:"stat-s"},products.length," наим."),h("div",{className:"mbar"},h("div",{className:"mbar-f",style:{width:Math.min(100,stock/2)+"%",background:"linear-gradient(90deg,var(--a),var(--a2))"}}))),
+h("div",{className:"gc"},h("div",{className:"stat-l"},"ЗАКАЗЫ"),h("div",{className:"stat-v"},act.length),newO>0&&h("div",{className:"badge-n",style:{marginTop:4}},"🔴 ",newO," новых")),
+h("div",{className:"gc"},h("div",{className:"stat-l"},"ВЫРУЧКА"),h("div",{className:"stat-v",style:{fontSize:18}},fmt(rev)),h("div",{className:"mbar"},h("div",{className:"mbar-f",style:{width:rev>0?"70%":"0%",background:"linear-gradient(90deg,var(--gold),#f59e0b)"}}))),
+h("div",{className:"gc"},h("div",{className:"stat-l"},"ПРИБЫЛЬ"),h("div",{className:"stat-v",style:{fontSize:18,color:profit>=0?"#10b981":"#ef4444"}},fmt(profit)),rev>0&&h("div",{className:"stat-s"},"Маржа ",Math.round(profit/rev*100),"%")),
+h("div",{className:"gc wide"},h("div",{className:"crow"},h("div",null,h("div",{className:"stat-l"},"СРЕДНИЙ ЧЕК"),h("div",{className:"stat-v",style:{fontSize:20}},done.length?fmt(Math.round(rev/done.length)):"—")),h("div",{style:{textAlign:"right"}},h("div",{className:"stat-l"},"ДОСТАВЛЕНО"),h("div",{className:"stat-v",style:{fontSize:20}},done.length))))),
+stale.length>0&&h("div",{className:"wbox"},I.warn," ",stale.length," заказ(ов) ждут >2 дней"),
+(low.length>0||out.length>0)&&h("div",{className:"gc",style:{marginBottom:14}},out.map(p=>h("div",{key:p.id,style:{fontSize:12,padding:"2px 0",fontWeight:500}},h("span",{style:{color:"#ef4444"}},"⛔ "),p.name)),low.map(p=>h("div",{key:p.id,style:{fontSize:12,padding:"2px 0",fontWeight:500}},h("span",{style:{color:"#f59e0b"}},"⚠ "),p.name," (",Object.values(p.sizes).reduce((a,b)=>a+b,0),")"))),
+feed.length>0&&h(React.Fragment,null,h("div",{className:"h2",style:{marginBottom:8}},"Лента"),h("div",{className:"gc"},feed.slice(0,8).map((f,i)=>h("div",{key:i,className:"feed-i"},h("div",{className:"feed-dot",style:{background:f.color}}),h("div",{className:"feed-txt"},h("b",null,f.name)," → ",f.type),h("div",{className:"feed-time"},relTime(f.date)))))))}
 
-// ═══ PAGES ═══
-function HomePage({ products, orders }) {
-  const stock = products.reduce((s, p) => s + Object.values(p.sizes).reduce((a, b) => a + b, 0), 0);
-  const active = orders.filter(o => ["Новый", "Собирается", "Отправлен"].includes(o.status));
-  const done = orders.filter(o => o.status === "Доставлен");
-  const rev = done.reduce((s, o) => s + (o.total || 0), 0);
-  const cost = done.reduce((s, o) => s + o.items.reduce((is, it) => { const p = products.find(x => x.id === it.productId); return is + (p ? p.costPrice * (+it.qty || 1) : 0); }, 0), 0);
-  const profit = rev - cost;
-  const newO = orders.filter(o => o.status === "Новый").length;
-  const stale = orders.filter(o => o.status === "Новый" && daysAgo(o.createdAt) >= 2);
-  const low = products.filter(p => { const t = Object.values(p.sizes).reduce((a, b) => a + b, 0); return t > 0 && t <= p.minStock; });
-  const out = products.filter(p => Object.keys(p.sizes).length > 0 && Object.values(p.sizes).reduce((a, b) => a + b, 0) === 0);
+function ProductsPage({products,setProducts,toast}){const[search,sSearch]=useState("");
+const list=useMemo(()=>{let l=[...products];if(search)l=l.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));return l},[products,search]);
+const chgSz=(pid,sz,val)=>{setProducts(prev=>prev.map(p=>p.id===pid?{...p,sizes:{...p.sizes,[sz]:val},updatedAt:new Date().toISOString()}:p))};
+const del=pid=>{setProducts(prev=>prev.filter(x=>x.id!==pid));toast("Удалён")};
+return h("div",null,h("div",{className:"h1"},"Товары"),h("div",{className:"sub",style:{marginBottom:14}},products.length," наименований"),
+h("div",{className:"gsrch"},I.srch,h("input",{placeholder:"Поиск...",value:search,onChange:e=>sSearch(e.target.value)})),
+list.length===0?h("div",{className:"empty"},"Нет товаров"):list.map(p=>{const tot=Object.values(p.sizes).reduce((a,b)=>a+b,0);const isLow=tot>0&&tot<=p.minStock;const isOut=tot===0&&Object.keys(p.sizes).length>0;
+return h("div",{key:p.id,className:"gc"},h("div",{className:"crow"},h("div",{style:{display:"flex",alignItems:"center",gap:6}},h("span",{className:"cn"},p.name),h(CTag,{cat:p.category})),h("span",{className:"cp"},fmt(p.sellPrice))),
+isOut&&h("div",{style:{fontSize:11,color:"#ef4444",fontWeight:700,marginTop:4}},"⛔ НЕТ"),isLow&&h("div",{style:{fontSize:11,color:"#f59e0b",fontWeight:700,marginTop:4}},"⚠ Мало — ",tot," шт."),
+h("div",{style:{marginTop:6}},h(SzChips,{sizes:p.sizes,onChange:(sz,val)=>chgSz(p.id,sz,val)})),
+h("div",{className:"crow",style:{marginTop:8}},h("span",{style:{fontSize:11,color:"var(--t3)",fontWeight:500}},"Себест. ",fmt(p.costPrice)," · ",tot," шт."),h("button",{className:"btn bgh bxs",onClick:()=>del(p.id),style:{color:"#ef4444"}},I.del)))}))}
 
-  return React.createElement("div", null,
-    React.createElement("div", { className: "pt" }, "FUFFSHAK"),
-    React.createElement("div", { className: "ps" }, new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })),
-    React.createElement("div", { className: "hscroll" },
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "На складе"), React.createElement("div", { className: "scv" }, stock), React.createElement("div", { className: "scs" }, products.length, " наим.")),
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Заказы"), React.createElement("div", { className: "scv" }, active.length), newO > 0 && React.createElement("div", { className: "scs", style: { color: "var(--ro)" } }, "🔴 ", newO, " новых")),
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Выручка"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, fmt(rev))),
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Прибыль"), React.createElement("div", { className: "scv", style: { fontSize: 17, color: profit >= 0 ? "#4caf50" : "#ef5350" } }, fmt(profit)), rev > 0 && React.createElement("div", { className: "scs" }, "Маржа ", Math.round(profit / rev * 100), "%")),
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Ср. чек"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, done.length ? fmt(Math.round(rev / done.length)) : "—"))),
-    stale.length > 0 && React.createElement("div", { className: "wbox" }, I.warn, " ", stale.length, " заказ(ов) ждут >2 дней"),
-    (low.length > 0 || out.length > 0) && React.createElement("div", { className: "card" },
-      out.map(p => React.createElement("div", { key: p.id, style: { fontSize: 12, padding: "2px 0" } }, React.createElement("span", { style: { color: "#ef5350", fontWeight: 600 } }, "⛔ "), p.name)),
-      low.map(p => React.createElement("div", { key: p.id, style: { fontSize: 12, padding: "2px 0" } }, React.createElement("span", { style: { color: "#ff9800", fontWeight: 600 } }, "⚠ "), p.name, " (", Object.values(p.sizes).reduce((a, b) => a + b, 0), ")"))),
-    active.length > 0 && React.createElement(React.Fragment, null,
-      React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 8, marginTop: 4 } }, "Активные заказы"),
-      active.slice(0, 6).map(o => React.createElement("div", { key: o.id, className: "card" },
-        React.createElement("div", { className: "card-h" }, React.createElement("div", null, React.createElement("span", { className: "card-name" }, o.clientName), o.urgent && React.createElement("span", { className: "urgent-dot" })), React.createElement(StatusBadge, { status: o.status, onClick: () => {} })),
-        React.createElement("div", { style: { fontSize: 12, color: "var(--t2)" } }, o.items.map((it, i) => { const p = products.find(x => x.id === it.productId); return React.createElement("span", { key: i }, p ? p.name : "?", i < o.items.length - 1 ? ", " : ""); })),
-        React.createElement("div", { className: "card-row" }, React.createElement("span", { style: { fontSize: 11, color: "var(--t3)" } }, o.clientCity, " · ", o.deliveryMethod), React.createElement("span", { className: "card-price" }, fmt(o.total || 0))))))
-  );
-}
+function OrdersPage({orders,setOrders,products,setProducts,clients,toast}){const[search,sSearch]=useState("");const[tab,sTab]=useState("active");const[view,sView]=useState(null);
+const list=useMemo(()=>{let l=[...orders];if(tab==="active")l=l.filter(o=>["Новый","Собирается","Отправлен"].includes(o.status));if(tab==="done")l=l.filter(o=>o.status==="Доставлен");if(tab==="other")l=l.filter(o=>["Возврат","Отменён"].includes(o.status));
+if(search)l=l.filter(o=>o.clientName.toLowerCase().includes(search.toLowerCase())||(o.trackNumber||"").includes(search)||(o.clientCity||"").toLowerCase().includes(search.toLowerCase()));l.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));return l},[orders,search,tab]);
+const nxtSt=o=>{const ns=NS[o.status];if(!ns)return;setOrders(prev=>prev.map(x=>x.id===o.id?{...x,status:ns,history:[...(x.history||[]),{status:ns,date:new Date().toISOString()}],updatedAt:new Date().toISOString()}:x));toast(`→ ${ns}`)};
+const saveOrd=o=>{const old=orders.find(x=>x.id===o.id);if(old&&old.status!==o.status){o.history=[...(o.history||[]),{status:o.status,date:new Date().toISOString()}];if((o.status==="Возврат"||o.status==="Отменён")&&old.status!=="Возврат"&&old.status!=="Отменён"){setProducts(prev=>restoreStock(prev,o.items));toast("↩ Остатки")}}
+o.total=calcTotal(o.items,products,o.discount);setOrders(prev=>prev.map(x=>x.id===o.id?o:x));sView(null);toast("✅ Сохранено")};
+return h("div",null,h("div",{className:"h1"},"Заказы"),h("div",{className:"sub",style:{marginBottom:14}},orders.length," всего"),
+h("div",{className:"gsrch"},I.srch,h("input",{placeholder:"Имя, город, трек...",value:search,onChange:e=>sSearch(e.target.value)})),
+h("div",{className:"tabs"},[["active","Активные"],["all","Все"],["done","Доставлены"],["other","Возврат"]].map(([k,l])=>h("div",{key:k,className:`tab ${tab===k?"on":""}`,onClick:()=>sTab(k)},l))),
+list.length===0?h("div",{className:"empty"},"Нет заказов"):list.map(o=>h("div",{key:o.id,className:"gc",onClick:()=>sView(o),style:{cursor:"pointer"}},
+o.status==="Новый"&&daysAgo(o.createdAt)>=2&&h("div",{className:"stale-b"}),
+h("div",{className:"crow"},h("div",{style:{display:"flex",alignItems:"center",gap:4}},h("span",{className:"cn"},o.clientName),o.urgent&&h("span",{className:"ud"}),o.status==="Новый"&&daysAgo(o.createdAt)>=2&&h("span",{style:{fontSize:9,color:"#ef4444",fontWeight:700,marginLeft:2}},daysAgo(o.createdAt),"д")),h(StBadge,{status:o.status,onClick:e=>{e.stopPropagation();nxtSt(o)}})),
+h(Stepper,{status:o.status}),
+h("div",{style:{fontSize:12,color:"var(--t2)",fontWeight:500}},o.items.map((it,i)=>{const p=products.find(x=>x.id===it.productId);return h("span",{key:i},p?p.name:"?"," (",it.size,")",i<o.items.length-1?", ":"")})),
+h("div",{className:"crow",style:{marginTop:4}},h("span",{style:{fontSize:11,color:"var(--t3)",fontWeight:500}},o.clientCity," · ",o.deliveryMethod,o.prepaid?" · ✓":""),h("span",{className:"cp"},fmt(o.total||0))))),
+view&&h(ViewOrdModal,{order:view,products,onSave:saveOrd,onClose:()=>sView(null),toast}))}
 
-function ProductsPage({ products, setProducts, toast }) {
-  const [search, setSearch] = useState("");
-  const list = useMemo(() => { let l = [...products]; if (search) l = l.filter(p => p.name.toLowerCase().includes(search.toLowerCase())); return l; }, [products, search]);
-  const changeSz = (pid, sz, val) => { setProducts(prev => prev.map(p => p.id === pid ? { ...p, sizes: { ...p.sizes, [sz]: val }, updatedAt: new Date().toISOString() } : p)); };
-  const del = pid => { setProducts(prev => prev.filter(x => x.id !== pid)); toast("Удалён"); };
-  return React.createElement("div", null,
-    React.createElement("div", { className: "pt" }, "Товары"),
-    React.createElement("div", { className: "ps" }, products.length, " наименований"),
-    React.createElement("div", { className: "gsrch" }, I.srch, React.createElement("input", { placeholder: "Поиск...", value: search, onChange: e => setSearch(e.target.value) })),
-    list.length === 0 ? React.createElement("div", { className: "empty" }, "Нет товаров. Нажмите + чтобы добавить") :
-    list.map(p => { const tot = Object.values(p.sizes).reduce((a, b) => a + b, 0); const isLow = tot > 0 && tot <= p.minStock; const isOut = tot === 0 && Object.keys(p.sizes).length > 0;
-      return React.createElement("div", { key: p.id, className: "card" },
-        React.createElement("div", { className: "card-h" }, React.createElement("div", null, React.createElement("span", { className: "card-name" }, p.name), React.createElement("span", { className: "tag", style: { marginLeft: 6 } }, p.category)), React.createElement("span", { className: "card-price" }, fmt(p.sellPrice))),
-        isOut && React.createElement("div", { style: { fontSize: 11, color: "#ef5350", fontWeight: 600, marginBottom: 4 } }, "⛔ НЕТ В НАЛИЧИИ"),
-        isLow && React.createElement("div", { style: { fontSize: 11, color: "#ff9800", fontWeight: 600, marginBottom: 4 } }, "⚠ Мало — ", tot, " шт."),
-        React.createElement(SizeChips, { sizes: p.sizes, onChange: (sz, val) => changeSz(p.id, sz, val) }),
-        React.createElement("div", { className: "card-row" }, React.createElement("span", { style: { fontSize: 11, color: "var(--t3)" } }, "Себест. ", fmt(p.costPrice), " · Всего ", tot, " шт."),
-          React.createElement("button", { className: "btn bgh bsm", onClick: () => del(p.id), style: { color: "#ef5350" } }, I.del))); })
-  );
-}
+function ClientsPage({orders}){const[search,sSearch]=useState("");const map={};orders.forEach(o=>{const k=o.clientName.toLowerCase().trim();if(!map[k])map[k]={name:o.clientName,phone:"",city:"",orders:[],spent:0};map[k].orders.push(o);if(o.status==="Доставлен")map[k].spent+=o.total||0;if(o.clientPhone&&!map[k].phone)map[k].phone=o.clientPhone;if(o.clientCity&&!map[k].city)map[k].city=o.clientCity});
+let list=Object.values(map).sort((a,b)=>b.spent-a.spent);if(search)list=list.filter(c=>c.name.toLowerCase().includes(search.toLowerCase()));
+return h("div",null,h("div",{className:"h1"},"Клиенты"),h("div",{className:"sub",style:{marginBottom:14}},list.length," уникальных"),
+h("div",{className:"gsrch"},I.srch,h("input",{placeholder:"Имя...",value:search,onChange:e=>sSearch(e.target.value)})),
+list.length===0?h("div",{className:"empty"},"Нет клиентов"):list.map((c,i)=>h("div",{key:i,className:"gc"},h("div",{className:"crow"},h("span",{className:"cn"},c.name),h("span",{className:"cp"},fmt(c.spent))),
+h("div",{style:{fontSize:12,color:"var(--t2)",fontWeight:500,marginTop:2}},c.phone||"—"," · ",c.city||"—"),
+h("div",{className:"crow",style:{marginTop:4}},h("span",{style:{fontSize:11,color:"var(--t3)",fontWeight:500}},c.orders.length," заказов · ",c.orders.filter(o=>o.status==="Доставлен").length," доставлено"),c.orders.length>=3&&h("span",{className:"badge-t"},I.star," Постоянный")))))}
 
-function OrdersPage({ orders, setOrders, products, setProducts, clients, toast }) {
-  const [search, setSearch] = useState(""); const [tab, setTab] = useState("active"); const [view, setView] = useState(null);
-  const list = useMemo(() => {
-    let l = [...orders];
-    if (tab === "active") l = l.filter(o => ["Новый", "Собирается", "Отправлен"].includes(o.status));
-    if (tab === "done") l = l.filter(o => o.status === "Доставлен");
-    if (tab === "other") l = l.filter(o => ["Возврат", "Отменён"].includes(o.status));
-    if (search) l = l.filter(o => o.clientName.toLowerCase().includes(search.toLowerCase()) || (o.trackNumber || "").includes(search) || (o.clientCity || "").toLowerCase().includes(search.toLowerCase()));
-    l.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return l;
-  }, [orders, search, tab]);
-  const nextSt = o => { const ns = NEXT_ST[o.status]; if (!ns) return; setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: ns, history: [...(x.history || []), { status: ns, date: new Date().toISOString() }], updatedAt: new Date().toISOString() } : x)); toast(`→ ${ns}`); };
-  const saveOrder = o => {
-    const old = orders.find(x => x.id === o.id);
-    if (old && old.status !== o.status) { o.history = [...(o.history || []), { status: o.status, date: new Date().toISOString() }]; if ((o.status === "Возврат" || o.status === "Отменён") && old.status !== "Возврат" && old.status !== "Отменён") { setProducts(prev => restoreStock(prev, o.items)); toast("↩ Остатки восстановлены"); } }
-    o.total = calcTotal(o.items, products, o.discount); setOrders(prev => prev.map(x => x.id === o.id ? o : x)); setView(null); toast("✅ Сохранено"); };
-  const del = oid => { const o = orders.find(x => x.id === oid); if (o && ["Новый", "Собирается"].includes(o.status)) { setProducts(prev => restoreStock(prev, o.items)); } setOrders(prev => prev.filter(x => x.id !== oid)); setView(null); toast("Удалён"); };
+function FinancePage({orders,products,toast}){const done=orders.filter(o=>o.status==="Доставлен");const rev=done.reduce((s,o)=>s+(o.total||0),0);const cost=done.reduce((s,o)=>s+o.items.reduce((is,it)=>{const p=products.find(x=>x.id===it.productId);return is+(p?p.costPrice*(+it.qty||1):0)},0),0);const profit=rev-cost;
+const sm={};done.forEach(o=>o.items.forEach(it=>{if(!sm[it.productId])sm[it.productId]={qty:0,rev:0};const p=products.find(x=>x.id===it.productId);sm[it.productId].qty+=+it.qty||1;sm[it.productId].rev+=p?p.sellPrice*(+it.qty||1):0}));
+const top=Object.entries(sm).map(([pid,d])=>({p:products.find(x=>x.id===pid),...d})).filter(x=>x.p).sort((a,b)=>b.rev-a.rev).slice(0,6);const mx=top.length?top[0].rev:1;
+return h("div",null,h("div",{className:"crow"},h("div",{className:"h1"},"Финансы"),h("button",{className:"btn bg2 bxs",onClick:()=>exportCSV(orders,products)},I.dl," CSV")),h("div",{className:"sub",style:{marginBottom:14}},"Аналитика"),
+h("div",{className:"hscr"},h("div",{className:"gc"},h("div",{className:"stat-l"},"ВЫРУЧКА"),h("div",{className:"stat-v",style:{fontSize:18}},fmt(rev))),h("div",{className:"gc"},h("div",{className:"stat-l"},"СЕБЕСТОИМОСТЬ"),h("div",{className:"stat-v",style:{fontSize:18,color:"#ef4444"}},fmt(cost))),h("div",{className:"gc"},h("div",{className:"stat-l"},"ПРИБЫЛЬ"),h("div",{className:"stat-v",style:{fontSize:18,color:profit>=0?"#10b981":"#ef4444"}},fmt(profit)),rev>0&&h("div",{className:"stat-s"},"Маржа ",Math.round(profit/rev*100),"%")),h("div",{className:"gc"},h("div",{className:"stat-l"},"СР. ЧЕК"),h("div",{className:"stat-v",style:{fontSize:18}},done.length?fmt(Math.round(rev/done.length)):"—"))),
+top.length>0&&h(React.Fragment,null,h("div",{className:"h2",style:{marginBottom:8}},"🏆 Топ товары"),top.map((t,i)=>h("div",{key:i,className:"gc"},h("div",{className:"crow"},h("div",{style:{display:"flex",alignItems:"center",gap:6}},h("span",{style:{fontSize:11,fontWeight:800,color:"var(--t3)",minWidth:16}},i+1),h("span",{className:"cn",style:{fontSize:13}},t.p.name),i===0&&h("span",{className:"badge-t"},I.star," Бестселлер")),h("span",{className:"cp",style:{fontSize:13}},fmt(t.rev))),h("div",{style:{display:"flex",alignItems:"center",gap:8,marginTop:6}},h("div",{className:"mbar",style:{flex:1}},h("div",{className:"mbar-f",style:{width:Math.round(t.rev/mx*100)+"%",background:`linear-gradient(90deg,${CC[t.p.category]||"var(--a)"},transparent)`}})),h("span",{style:{fontSize:10,color:"var(--t3)",fontWeight:600,whiteSpace:"nowrap"}},t.qty," шт."))))))}
 
-  return React.createElement("div", null,
-    React.createElement("div", { className: "pt" }, "Заказы"),
-    React.createElement("div", { className: "ps" }, orders.length, " всего"),
-    React.createElement("div", { className: "gsrch" }, I.srch, React.createElement("input", { placeholder: "Имя, город, трек...", value: search, onChange: e => setSearch(e.target.value) })),
-    React.createElement("div", { style: { display: "flex", gap: 4, marginBottom: 12, overflowX: "auto" } },
-      [["active", "Активные"], ["all", "Все"], ["done", "Доставлены"], ["other", "Возврат"]].map(([k, l]) => React.createElement("div", { key: k, className: `qsc ${tab === k ? "on" : ""}`, onClick: () => setTab(k), style: { padding: "7px 12px", borderRadius: 8 } }, l))),
-    list.length === 0 ? React.createElement("div", { className: "empty" }, "Нет заказов") :
-    list.map(o => React.createElement("div", { key: o.id, className: "card", onClick: () => setView(o), style: { cursor: "pointer" } },
-      o.status === "Новый" && daysAgo(o.createdAt) >= 2 && React.createElement("div", { className: "stale-bar" }),
-      React.createElement("div", { className: "card-h" },
-        React.createElement("div", null, React.createElement("span", { className: "card-name" }, o.clientName), o.urgent && React.createElement("span", { className: "urgent-dot" }),
-          o.status === "Новый" && daysAgo(o.createdAt) >= 2 && React.createElement("span", { style: { fontSize: 9, color: "#ef5350", marginLeft: 4 } }, daysAgo(o.createdAt), "д")),
-        React.createElement(StatusBadge, { status: o.status, onClick: e => { e.stopPropagation(); nextSt(o); } })),
-      React.createElement("div", { style: { fontSize: 12, color: "var(--t2)" } }, o.items.map((it, i) => { const p = products.find(x => x.id === it.productId); return React.createElement("span", { key: i }, p ? p.name : "?", " (", it.size, ")", i < o.items.length - 1 ? ", " : ""); })),
-      React.createElement("div", { className: "card-row" }, React.createElement("span", { style: { fontSize: 11, color: "var(--t3)" } }, o.clientCity, " · ", o.deliveryMethod, o.prepaid ? " · ✓" : ""), React.createElement("span", { className: "card-price" }, fmt(o.total || 0))))),
-    view && React.createElement(ViewOrderModal, { order: view, products, onSave: saveOrder, onClose: () => setView(null), toast })
-  );
-}
-
-function ClientsPage({ orders }) {
-  const [search, setSearch] = useState("");
-  const map = {}; orders.forEach(o => { const k = o.clientName.toLowerCase().trim(); if (!map[k]) map[k] = { name: o.clientName, phone: "", city: "", orders: [], spent: 0 }; map[k].orders.push(o); if (o.status === "Доставлен") map[k].spent += o.total || 0; if (o.clientPhone && !map[k].phone) map[k].phone = o.clientPhone; if (o.clientCity && !map[k].city) map[k].city = o.clientCity; });
-  let list = Object.values(map).sort((a, b) => b.spent - a.spent);
-  if (search) list = list.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
-  return React.createElement("div", null,
-    React.createElement("div", { className: "pt" }, "Клиенты"),
-    React.createElement("div", { className: "ps" }, list.length, " уникальных"),
-    React.createElement("div", { className: "gsrch" }, I.srch, React.createElement("input", { placeholder: "Имя, телефон...", value: search, onChange: e => setSearch(e.target.value) })),
-    list.length === 0 ? React.createElement("div", { className: "empty" }, "Нет клиентов") :
-    list.map((c, i) => React.createElement("div", { key: i, className: "card" },
-      React.createElement("div", { className: "card-h" }, React.createElement("span", { className: "card-name" }, c.name), React.createElement("span", { className: "card-price" }, fmt(c.spent))),
-      React.createElement("div", { style: { fontSize: 12, color: "var(--t2)" } }, c.phone || "—", " · ", c.city || "—"),
-      React.createElement("div", { style: { fontSize: 11, color: "var(--t3)", marginTop: 3 } }, c.orders.length, " заказов · ", c.orders.filter(o => o.status === "Доставлен").length, " доставлено")))
-  );
-}
-
-function FinancePage({ orders, products, toast }) {
-  const done = orders.filter(o => o.status === "Доставлен");
-  const rev = done.reduce((s, o) => s + (o.total || 0), 0);
-  const cost = done.reduce((s, o) => s + o.items.reduce((is, it) => { const p = products.find(x => x.id === it.productId); return is + (p ? p.costPrice * (+it.qty || 1) : 0); }, 0), 0);
-  const profit = rev - cost;
-  const soldMap = {}; done.forEach(o => o.items.forEach(it => { if (!soldMap[it.productId]) soldMap[it.productId] = { qty: 0, rev: 0 }; const p = products.find(x => x.id === it.productId); soldMap[it.productId].qty += +it.qty || 1; soldMap[it.productId].rev += p ? p.sellPrice * (+it.qty || 1) : 0; }));
-  const top = Object.entries(soldMap).map(([pid, d]) => ({ p: products.find(x => x.id === pid), ...d })).filter(x => x.p).sort((a, b) => b.rev - a.rev).slice(0, 6);
-  return React.createElement("div", null,
-    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, React.createElement("div", { className: "pt" }, "Финансы"),
-      React.createElement("button", { className: "btn bg2 bsm", onClick: () => exportCSV(orders, products) }, I.dl, " CSV")),
-    React.createElement("div", { className: "ps" }, "Аналитика"),
-    React.createElement("div", { className: "hscroll" },
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Выручка"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, fmt(rev))),
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Себестоимость"), React.createElement("div", { className: "scv", style: { fontSize: 17, color: "#ef5350" } }, fmt(cost))),
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Прибыль"), React.createElement("div", { className: "scv", style: { fontSize: 17, color: profit >= 0 ? "#4caf50" : "#ef5350" } }, fmt(profit)), rev > 0 && React.createElement("div", { className: "scs" }, "Маржа ", Math.round(profit / rev * 100), "%")),
-      React.createElement("div", { className: "sc" }, React.createElement("div", { className: "scl" }, "Ср. чек"), React.createElement("div", { className: "scv", style: { fontSize: 17 } }, done.length ? fmt(Math.round(rev / done.length)) : "—"))),
-    top.length > 0 && React.createElement(React.Fragment, null,
-      React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 8 } }, "🏆 Топ товары"),
-      top.map((t, i) => React.createElement("div", { key: i, className: "card" },
-        React.createElement("div", { className: "card-h" }, React.createElement("span", { className: "card-name" }, t.p.name), React.createElement("span", { className: "card-price" }, fmt(t.rev))),
-        React.createElement("div", { style: { fontSize: 11, color: "var(--t3)" } }, "Продано ", t.qty, " шт."))))
-  );
-}
-
-// ═══ APP ═══
-function App() {
-  const [pg, setPg] = useState("home");
-  const [products, setProducts] = useP("products", []);
-  const [orders, setOrders] = useP("orders", []);
-  const { toasts, toast } = useToast();
-  const [fabOpen, setFabOpen] = useState(false);
-  const [modal, setModal] = useState(null);
-  const clients = useMemo(() => { const map = {}; orders.forEach(o => { const k = o.clientName.toLowerCase().trim(); if (!map[k]) map[k] = { id: k, name: o.clientName, phone: o.clientPhone || "", city: o.clientCity || "" }; if (o.clientPhone && !map[k].phone) map[k].phone = o.clientPhone; if (o.clientCity && !map[k].city) map[k].city = o.clientCity; }); return Object.values(map); }, [orders]);
-  const addProduct = p => { setProducts(prev => [...prev, p]); setModal(null); toast("✅ Товар добавлен"); };
-  const addOrder = o => { setProducts(prev => deductStock(prev, o.items)); setOrders(prev => [...prev, o]); setModal(null); toast("✅ Заказ создан"); };
-  const active = orders.filter(o => ["Новый", "Собирается", "Отправлен"].includes(o.status)).length;
-  const newN = orders.filter(o => o.status === "Новый").length;
-  const nav = [{ id: "home", l: "Главная", i: I.home }, { id: "products", l: "Товары", i: I.tag, b: products.length }, { id: "orders", l: "Заказы", i: I.box, b: active }, { id: "clients", l: "Клиенты", i: I.usr }, { id: "finance", l: "Финансы", i: I.dol }];
-
-  return React.createElement(React.Fragment, null,
-    React.createElement("style", null, css),
-    React.createElement("div", { className: "abg" }),
-    React.createElement("div", { className: "main" },
-      pg === "home" && React.createElement(HomePage, { products, orders }),
-      pg === "products" && React.createElement(ProductsPage, { products, setProducts, toast }),
-      pg === "orders" && React.createElement(OrdersPage, { orders, setOrders, products, setProducts, clients, toast }),
-      pg === "clients" && React.createElement(ClientsPage, { orders, products }),
-      pg === "finance" && React.createElement(FinancePage, { orders, products, toast })),
-    fabOpen && React.createElement("div", { className: "fab-over", onClick: () => setFabOpen(false) }),
-    fabOpen && React.createElement("div", { className: "fab-menu" },
-      React.createElement("div", { className: "fab-opt", onClick: () => { setFabOpen(false); setModal("product"); } }, I.tag, " Новый товар"),
-      React.createElement("div", { className: "fab-opt", onClick: () => { setFabOpen(false); setModal("order"); } }, I.box, " Новый заказ")),
-    React.createElement("button", { className: "fab", onClick: () => setFabOpen(!fabOpen), style: { transform: fabOpen ? "rotate(45deg)" : "none" } }, I.plus),
-    React.createElement("nav", { className: "bnav" },
-      nav.map(n => React.createElement("button", { key: n.id, className: `bnav-i ${pg === n.id ? "on" : ""}`, onClick: () => setPg(n.id) },
-        n.i, React.createElement("span", null, n.l),
-        n.id === "orders" && newN > 0 && React.createElement("span", { className: "bbg", style: { background: "#c2185b" } }, newN),
-        n.b > 0 && n.id !== "home" && n.id !== "orders" && React.createElement("span", { className: "bbg" }, n.b)))),
-    modal === "product" && React.createElement(AddProductModal, { onSave: addProduct, onClose: () => setModal(null) }),
-    modal === "order" && React.createElement(AddOrderModal, { products, clients, onSave: addOrder, onClose: () => setModal(null), toast }),
-    React.createElement("div", { className: "tc" }, toasts.map(t => React.createElement("div", { key: t.id, className: `to ${t.type === "err" ? "err" : ""}` }, t.m)))
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+function App(){const[pg,sPg]=useState("home");const[products,setProducts]=useP("products",[]);const[orders,setOrders]=useP("orders",[]);const{toasts,toast}=useToast();const[fo,sFo]=useState(false);const[modal,sMod]=useState(null);
+const clients=useMemo(()=>{const m={};orders.forEach(o=>{const k=o.clientName.toLowerCase().trim();if(!m[k])m[k]={id:k,name:o.clientName,phone:o.clientPhone||"",city:o.clientCity||""};if(o.clientPhone&&!m[k].phone)m[k].phone=o.clientPhone;if(o.clientCity&&!m[k].city)m[k].city=o.clientCity});return Object.values(m)},[orders]);
+const addP=p=>{setProducts(prev=>[...prev,p]);sMod(null);toast("✅ Товар добавлен")};
+const addO=o=>{setProducts(prev=>deductStock(prev,o.items));setOrders(prev=>[...prev,o]);sMod(null);toast("✅ Заказ создан")};
+const newN=orders.filter(o=>o.status==="Новый").length;
+const nav=[{id:"home",l:"Главная",i:I.home},{id:"products",l:"Товары",i:I.tag},{id:"orders",l:"Заказы",i:I.box,dot:newN>0},{id:"clients",l:"Клиенты",i:I.usr},{id:"finance",l:"Финансы",i:I.dol}];
+return h(React.Fragment,null,h("style",null,css),h("div",{className:"amb"}),
+h("div",{className:"main"},pg==="home"&&h(HomePage,{products,orders}),pg==="products"&&h(ProductsPage,{products,setProducts,toast}),pg==="orders"&&h(OrdersPage,{orders,setOrders,products,setProducts,clients,toast}),pg==="clients"&&h(ClientsPage,{orders}),pg==="finance"&&h(FinancePage,{orders,products,toast})),
+fo&&h("div",{className:"fov",onClick:()=>sFo(false)}),
+fo&&h("div",{className:"fab-m"},h("div",null,h("div",{className:"fab-o",onClick:()=>{sFo(false);sMod("order")}},I.box," Новый заказ")),h("div",null,h("div",{className:"fab-o",onClick:()=>{sFo(false);sMod("product")}},I.tag," Новый товар"))),
+h("button",{className:"fab",onClick:()=>sFo(!fo),style:{transform:fo?"rotate(45deg)":"none"}},I.plus),
+h("nav",{className:"bnav"},nav.map(n=>h("button",{key:n.id,className:`bn ${pg===n.id?"on":""}`,onClick:()=>sPg(n.id)},n.i,h("span",null,n.l),n.dot&&h("div",{className:"dot"})))),
+modal==="product"&&h(AddProdModal,{onSave:addP,onClose:()=>sMod(null)}),
+modal==="order"&&h(AddOrdModal,{products,clients,onSave:addO,onClose:()=>sMod(null),toast}),
+h("div",{className:"tc"},toasts.map(t=>h("div",{key:t.id,className:`to ${t.type==="err"?"err":""}`},t.m))))}
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
 </script>
-<script>
-// Register Service Worker for PWA
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  });
-}
-</script>
+<script>if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})</script>
 </body>
 </html>
